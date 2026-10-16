@@ -66,6 +66,8 @@ GameInfoPage::GameInfoPage(Theme& theme, std::function<void()> onApply, std::fun
       field.style.setMinimalWidth(FIELD_W);
       field.style.setMaximalWidth(FIELD_W);
       if (f.tip) field.setToolTip(f.tip);
+      // Enter in a field is Apply, as in any dialog.
+      field.onConfirm(this, onApply);
       fieldColumn << namedRow(f.name, field, NAME_W);
       this->fields.emplace_back(f.id, &field);
     }

@@ -108,6 +108,8 @@ OnlinePage::OnlinePage(Theme& theme, OnlineSetup& setup, Mode mode, std::functio
     });
     agui::HorizontalFlow& hostRow = namedRow("Host on port", *this->port);
     hostRow << agui::pusher << agui::button("Host", &this->window, ask(Request::Host));
+    // Enter in a field is the button on its row, as in any dialog.
+    this->port->onConfirm(this, ask(Request::Host));
     direct << hostRow
            << note("The others connect to this computer's address, which shows once hosting starts. From outside "
                    "your network, your router has to let the port through.");
@@ -130,6 +132,7 @@ OnlinePage::OnlinePage(Theme& theme, OnlineSetup& setup, Mode mode, std::functio
     this->code->onTextEdit(this, [this] { this->setup.room = this->code->getText(); });
     agui::HorizontalFlow& joinRow = namedRow("Invite code", *this->code);
     joinRow << agui::pusher << agui::button("Join", &this->window, ask(Request::JoinRoom));
+    this->code->onConfirm(this, ask(Request::JoinRoom));
     invited << joinRow << note("Joining brings the session's game here, in place of this one.");
     content << invited;
     this->sections.push_back(&invited);
@@ -142,6 +145,7 @@ OnlinePage::OnlinePage(Theme& theme, OnlineSetup& setup, Mode mode, std::functio
     this->address->onTextEdit(this, [this] { this->setup.address = this->address->getText(); });
     agui::HorizontalFlow& directRow = namedRow("Editor's address", *this->address);
     directRow << agui::pusher << agui::button("Join", &this->window, ask(Request::JoinDirect));
+    this->address->onConfirm(this, ask(Request::JoinDirect));
     direct << directRow;
     content << direct;
     this->sections.push_back(&direct);
