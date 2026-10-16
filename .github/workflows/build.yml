@@ -1,6 +1,7 @@
-# Builds the editor for Windows and Linux on every push to master, and puts
-# both up for download as the release "latest" -- replaced each time, so it is
-# always the newest commit's. The links stay the same:
+# Builds the editor for Windows and Linux on every push to master and on every
+# pull request. A push to master also puts both up for download as the release
+# "latest" -- replaced each time, so it is always the newest commit's. The
+# links stay the same:
 #   https://github.com/kovarex/kovarex_go_editor/releases/latest/download/kovarex_go_editor.exe
 #   https://github.com/kovarex/kovarex_go_editor/releases/latest/download/kovarex_go_editor-linux-x64.tar.gz
 name: Build
@@ -8,12 +9,14 @@ name: Build
 on:
   push:
     branches: [master]
+  pull_request:
   workflow_dispatch:
 
-# One release at a time: a push while an older one is still being published
+# One run at a time for each branch or pull request: a push while an older run
+# is still going -- a release being published, or a pull request being built --
 # replaces it.
 concurrency:
-  group: release
+  group: build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -70,6 +73,8 @@ jobs:
           if-no-files-found: error
 
   release:
+    # A pull request is only built, never released.
+    if: github.event_name != 'pull_request'
     needs: [windows, linux]
     runs-on: ubuntu-latest
     permissions:
