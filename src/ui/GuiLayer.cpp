@@ -3,6 +3,7 @@
 #include <app/Settings.hpp>
 #include <ui/EditorView.hpp>
 #include <ui/GoSprites.hpp>
+#include <ui/Input.hpp>
 #include <ui/Pages.hpp>
 #include <ui/Theme.hpp>
 
@@ -85,7 +86,7 @@ void GuiLayer::update(float dt)
   }
   // Shift shows tooltips at once, whatever the delay -- even when it is
   // "never". Agui takes back the ones it showed when Shift is let go of.
-  const bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+  const bool shift = input::IsKeyDown(KEY_LEFT_SHIFT) || input::IsKeyDown(KEY_RIGHT_SHIFT);
   this->gui->setInstantTooltip(shift);
   this->editorView->setShift(shift);
   this->gui->logic(true);

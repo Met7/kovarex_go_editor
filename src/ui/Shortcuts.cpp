@@ -1,5 +1,7 @@
 #include <ui/Shortcuts.hpp>
 
+#include <ui/Input.hpp>
+
 #include <raylib.h>
 
 #include <algorithm>
@@ -10,12 +12,12 @@ namespace {
 
 // The keys pressed since last frame, from raylib's queue of them. A key
 // pressed and let go again between two frames is in it, though
-// IsKeyPressed() never saw it down -- a quick tap, or a key sent by a
+// input::IsKeyPressed() never saw it down -- a quick tap, or a key sent by a
 // program -- and so is the modifier held along with it.
 std::vector<int> PressedSinceLastFrame()
 {
   std::vector<int> keys;
-  for (int key = GetKeyPressed(); key != 0; key = GetKeyPressed()) keys.push_back(key);
+  for (int key = input::GetKeyPressed(); key != 0; key = input::GetKeyPressed()) keys.push_back(key);
   return keys;
 }
 
@@ -23,7 +25,7 @@ std::vector<int> PressedSinceLastFrame()
 KeyCombo Held(int key, const std::vector<int>& pressed)
 {
   const auto down = [&pressed](int a, int b) {
-    return IsKeyDown(a) || IsKeyDown(b) || std::find(pressed.begin(), pressed.end(), a) != pressed.end() ||
+    return input::IsKeyDown(a) || input::IsKeyDown(b) || std::find(pressed.begin(), pressed.end(), a) != pressed.end() ||
            std::find(pressed.begin(), pressed.end(), b) != pressed.end();
   };
   return { key, down(KEY_LEFT_CONTROL, KEY_RIGHT_CONTROL), down(KEY_LEFT_SHIFT, KEY_RIGHT_SHIFT),
@@ -55,8 +57,8 @@ std::vector<Command> Shortcuts::poll(const Bindings& bindings, bool typing, bool
       // Alt+F4 is Windows', whatever is bound to it.
       if (combo.alt && combo.key == KEY_F4) continue;
 
-      const bool pressed = IsKeyPressed(combo.key) || std::find(queued.begin(), queued.end(), combo.key) != queued.end() ||
-                           (control.repeats && IsKeyPressedRepeat(combo.key));
+      const bool pressed = input::IsKeyPressed(combo.key) || std::find(queued.begin(), queued.end(), combo.key) != queued.end() ||
+                           (control.repeats && input::IsKeyPressedRepeat(combo.key));
       if (!pressed) continue;
       // A key two controls share goes to the first.
       if (this->claimed(combo.key)) continue;

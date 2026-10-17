@@ -3,8 +3,10 @@
 #include <app/Platform.hpp>
 #include <game/Config.hpp>
 #include <game/Sgf.hpp>
+#include <ui/AguiRaylib.hpp>
 #include <ui/EditorView.hpp>
 #include <ui/Fonts.hpp>
+#include <ui/Input.hpp>
 #include <ui/Pages.hpp>
 
 #include <raylib.h>
@@ -64,10 +66,11 @@ App::Window::Window(const Settings& settings)
 App::Window::~Window()
 {
   ui::UnloadFonts();
+  agui_raylib::ReleaseCursors();
   CloseWindow();
 }
 
-App::App()
+App::App(const std::vector<std::filesystem::path>& files)
 {
   ApplySettings(this->settings);
   // Whoever is met on a relay goes on the list of people met.
@@ -77,8 +80,6 @@ App::App()
   // never reach it.
   this->gui.setKeyFilter([this](int key) { return this->shortcuts.claimed(key); });
 
-  // A file double-clicked in Explorer arrives on the command line.
-  const std::vector<std::filesystem::path> files = platform::CommandLineFiles();
   if (files.empty() || !this->open(files.front())) this->emptyBoard();
 }
 
@@ -102,7 +103,7 @@ void App::frame()
   std::vector<Command> keys;
   ui::ControlsPage& controls = this->gui.pages().controls;
   if (controls.waiting()) {
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) controls.stop();
+    if (input::IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || input::IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) controls.stop();
     else if (const std::optional<ui::KeyCombo> pressed = this->shortcuts.capture()) controls.assign(*pressed);
   } else {
     keys = this->shortcuts.poll(this->settings.controls, this->gui.editor().typing(), this->gui.pages().isOpen());
@@ -125,6 +126,7 @@ void App::frame()
   ClearBackground(cfg::BACKGROUND_COLOR);
   this->gui.draw();
   EndDrawing();
+  input::NextFrame();
 }
 
 // ---------------------------------------------------------------- commands

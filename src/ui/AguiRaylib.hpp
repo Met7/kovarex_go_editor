@@ -256,4 +256,8 @@ public:
   bool setCursor(CursorEnum cursor) override;
 };
 
+// The cursors made for the window, before it closes. Another window -- the
+// tests open one for each scenario -- makes its own.
+void ReleaseCursors();
+
 }  // namespace agui_raylib

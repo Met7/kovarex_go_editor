@@ -85,14 +85,32 @@ target_compile_options(agui PRIVATE -w)
 #------------------------------------------------------------------------------
 # The editor.
 #------------------------------------------------------------------------------
+# All of it but main(), as a library the tests link too.
 file(GLOB_RECURSE EDITOR_SOURCES CONFIGURE_DEPENDS src/*.cpp)
-add_executable(kovarex_go_editor ${EDITOR_SOURCES} ${EMBEDDED})
-target_include_directories(kovarex_go_editor PRIVATE src)
+list(REMOVE_ITEM EDITOR_SOURCES ${CMAKE_SOURCE_DIR}/src/main.cpp)
+add_library(editor STATIC ${EDITOR_SOURCES} ${EMBEDDED})
+target_include_directories(editor PUBLIC src)
+target_compile_options(editor PRIVATE -Wall)
+target_link_libraries(editor PUBLIC agui raylib)
+
+add_executable(kovarex_go_editor src/main.cpp)
 target_compile_options(kovarex_go_editor PRIVATE -Wall)
-target_link_libraries(kovarex_go_editor PRIVATE agui raylib)
+target_link_libraries(kovarex_go_editor PRIVATE editor)
 # The C++ runtime built in, so the program runs on distributions older than
 # the compiler -- whose libstdc++ they wouldn't have.
 target_link_options(kovarex_go_editor PRIVATE -static-libstdc++ -static-libgcc)
+
+#------------------------------------------------------------------------------
+# The tests: UnitTest++ as Factorio has it, in libraries/UnitTest++, and the
+# scenarios in tests/ that play the editor through its own window. Run
+# build/linux/kovarex_go_editor_tests -- under xvfb-run where there is no
+# screen.
+#------------------------------------------------------------------------------
+file(GLOB UNITTEST_SOURCES CONFIGURE_DEPENDS libraries/UnitTest++/*.cpp libraries/UnitTest++/Posix/*.cpp)
+file(GLOB TEST_SOURCES CONFIGURE_DEPENDS tests/*.cpp)
+add_executable(kovarex_go_editor_tests ${TEST_SOURCES} ${UNITTEST_SOURCES})
+target_include_directories(kovarex_go_editor_tests PRIVATE tests libraries/UnitTest++)
+target_link_libraries(kovarex_go_editor_tests PRIVATE editor)
 
 #------------------------------------------------------------------------------
 # The relay: a server for sharing games through, needing none of the above.

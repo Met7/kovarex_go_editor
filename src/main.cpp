@@ -17,9 +17,10 @@
 // this program" has been pressed; the file arrives on the command line.
 
 #include <app/App.hpp>
+#include <app/Platform.hpp>
 
 int main()
 {
-  App app;
+  App app(platform::CommandLineFiles());
   return app.run();
 }

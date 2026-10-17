@@ -19,13 +19,25 @@
 #include <future>
 #include <memory>
 #include <string>
+#include <vector>
 
 class App {
 public:
-  App();
+  // Opens the first of `files` (a file double-clicked in Explorer arrives on
+  // the command line), or starts with an empty board.
+  explicit App(const std::vector<std::filesystem::path>& files);
 
   // Runs until the window closes.
   int run();
+
+  // One frame of run(): the tests run the editor a frame at a time, and look
+  // at what it holds in between.
+  void frame();
+  Game*                        currentGame() const { return this->game.get(); }
+  const std::filesystem::path& file() const { return this->path; }
+  ui::GuiLayer&                interface() { return this->gui; }
+  Settings&                    config() { return this->settings; }
+  bool                         quitting() const { return this->quitRequested; }
 
 private:
   // Opens the window on construction and closes it on destruction. Declared
@@ -40,7 +52,6 @@ private:
   // What to do once the unsaved-changes question has been answered.
   enum class After { None, NewGame, Open, Quit };
 
-  void frame();
   void handle(Command command);
   void handlePages();
   void handleDroppedFiles();

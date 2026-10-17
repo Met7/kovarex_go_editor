@@ -1,5 +1,7 @@
 #include <ui/AguiRaylib.hpp>
 
+#include <ui/Input.hpp>
+
 #include <Agui/KeyboardInput.hpp>
 #include <Agui/MouseInput.hpp>
 #include <Agui/ResizableText.hpp>
@@ -675,10 +677,10 @@ struct Modifiers {
 
 Modifiers CurrentModifiers()
 {
-  return { IsKeyDown(::KEY_LEFT_ALT) || IsKeyDown(::KEY_RIGHT_ALT),
-           IsKeyDown(::KEY_LEFT_SHIFT) || IsKeyDown(::KEY_RIGHT_SHIFT),
-           IsKeyDown(::KEY_LEFT_CONTROL) || IsKeyDown(::KEY_RIGHT_CONTROL),
-           IsKeyDown(::KEY_LEFT_SUPER) || IsKeyDown(::KEY_RIGHT_SUPER) };
+  return { input::IsKeyDown(::KEY_LEFT_ALT) || input::IsKeyDown(::KEY_RIGHT_ALT),
+           input::IsKeyDown(::KEY_LEFT_SHIFT) || input::IsKeyDown(::KEY_RIGHT_SHIFT),
+           input::IsKeyDown(::KEY_LEFT_CONTROL) || input::IsKeyDown(::KEY_RIGHT_CONTROL),
+           input::IsKeyDown(::KEY_LEFT_SUPER) || input::IsKeyDown(::KEY_RIGHT_SUPER) };
 }
 
 }  // namespace
@@ -687,7 +689,7 @@ void RaylibInput::pollInput()
 {
   const double    now = GetTime();
   const Modifiers mod = CurrentModifiers();
-  const ::Vector2 m   = GetMousePosition();
+  const ::Vector2 m   = input::GetMousePosition();
   const int       mx  = int(std::floor(m.x / this->viewScale));
   const int       my  = int(std::floor(m.y / this->viewScale));
 
@@ -707,11 +709,11 @@ void RaylibInput::pollInput()
       { MOUSE_BUTTON_MIDDLE, agui::MouseButton::MIDDLE },
     };
     for (const auto& [rl, ag] : kButtons) {
-      if (IsMouseButtonPressed(rl))  push(agui::MouseEvent::Type::MOUSE_DOWN, ag, 0);
-      if (IsMouseButtonReleased(rl)) push(agui::MouseEvent::Type::MOUSE_UP, ag, 0);
+      if (input::IsMouseButtonPressed(rl))  push(agui::MouseEvent::Type::MOUSE_DOWN, ag, 0);
+      if (input::IsMouseButtonReleased(rl)) push(agui::MouseEvent::Type::MOUSE_UP, ag, 0);
     }
 
-    const float wheel = GetMouseWheelMove();
+    const float wheel = input::GetMouseWheelMove();
     if (wheel > 0) push(agui::MouseEvent::Type::MOUSE_WHEEL_UP, agui::MouseButton::NONE, 1);
     if (wheel < 0) push(agui::MouseEvent::Type::MOUSE_WHEEL_DOWN, agui::MouseButton::NONE, -1);
   }
@@ -726,14 +728,14 @@ void RaylibInput::pollInput()
     for (const KeyMap& k : kKeys) {
       if (this->keyFilter && this->keyFilter(k.raylib)) continue;
       const uint32_t uni = uint32_t(k.key);
-      if (IsKeyPressed(k.raylib))       push(agui::KeyEvent::KEY_DOWN, k.key, k.ext, uni, k.raylib);
-      if (IsKeyPressedRepeat(k.raylib)) push(agui::KeyEvent::KEY_REPEAT, k.key, k.ext, uni, k.raylib);
-      if (IsKeyReleased(k.raylib))      push(agui::KeyEvent::KEY_UP, k.key, k.ext, uni, k.raylib);
+      if (input::IsKeyPressed(k.raylib))       push(agui::KeyEvent::KEY_DOWN, k.key, k.ext, uni, k.raylib);
+      if (input::IsKeyPressedRepeat(k.raylib)) push(agui::KeyEvent::KEY_REPEAT, k.key, k.ext, uni, k.raylib);
+      if (input::IsKeyReleased(k.raylib))      push(agui::KeyEvent::KEY_UP, k.key, k.ext, uni, k.raylib);
     }
 
     // Printable text. Agui's KeyEnum values are ASCII, so an ASCII codepoint
     // doubles as the key (uppercased, which is how the enum spells letters).
-    for (int ch = GetCharPressed(); ch > 0; ch = GetCharPressed()) {
+    for (int ch = input::GetCharPressed(); ch > 0; ch = input::GetCharPressed()) {
       const int upper = (ch >= 'a' && ch <= 'z') ? ch - 'a' + 'A' : ch;
       const auto key  = upper < 128 ? agui::KeyEnum(upper) : agui::KEY_NONE;
       push(agui::KeyEvent::KEY_DOWN, key, agui::EXT_KEY_NONE, uint32_t(ch), 0);
@@ -747,9 +749,9 @@ void RaylibInput::pollInput()
       for (int k = ::KEY_A; k <= ::KEY_Z; ++k) {
         if (this->keyFilter && this->keyFilter(k)) continue;
         const auto key = agui::KeyEnum(k);  // both spell letters in uppercase ASCII
-        if (IsKeyPressed(k))       push(agui::KeyEvent::KEY_DOWN, key, agui::EXT_KEY_NONE, 0, k);
-        if (IsKeyPressedRepeat(k)) push(agui::KeyEvent::KEY_REPEAT, key, agui::EXT_KEY_NONE, 0, k);
-        if (IsKeyReleased(k))      push(agui::KeyEvent::KEY_UP, key, agui::EXT_KEY_NONE, 0, k);
+        if (input::IsKeyPressed(k))       push(agui::KeyEvent::KEY_DOWN, key, agui::EXT_KEY_NONE, 0, k);
+        if (input::IsKeyPressedRepeat(k)) push(agui::KeyEvent::KEY_REPEAT, key, agui::EXT_KEY_NONE, 0, k);
+        if (input::IsKeyReleased(k))      push(agui::KeyEvent::KEY_UP, key, agui::EXT_KEY_NONE, 0, k);
       }
     }
   }
@@ -759,13 +761,16 @@ namespace {
 
 // The text cursor. Windows' own inverts what is under it, and over the text
 // boxes' middle grey that is the same grey: it vanishes. This one is white
-// with a black edge, seen on anything; made once, at the monitor's scale.
+// with a black edge, seen on anything; made once a window, at the monitor's
+// scale. GLFW takes it away with the window: see ReleaseCursors().
+GLFWcursor* ibeamMade  = nullptr;
+bool        ibeamTried = false;
+
 GLFWcursor* IBeam()
 {
-  static GLFWcursor* made = nullptr;
-  static bool        tried = false;
-  if (tried) return made;
-  tried = true;
+  GLFWcursor*& made = ibeamMade;
+  if (ibeamTried) return made;
+  ibeamTried = true;
 
   // An I, in pixels at 100%: the stem, and a short bar across each end.
   constexpr int W = 9, H = 21, MIDDLE = 4;
@@ -798,6 +803,13 @@ GLFWcursor* IBeam()
 }
 
 }  // namespace
+
+void ReleaseCursors()
+{
+  if (ibeamMade) glfwDestroyCursor(ibeamMade);
+  ibeamMade  = nullptr;
+  ibeamTried = false;
+}
 
 bool RaylibCursorProvider::setCursor(CursorEnum cursor)
 {

@@ -1,7 +1,7 @@
 # Builds the editor for Windows and Linux on every push to master and on every
-# pull request. A push to master also puts both up for download as the release
-# "latest" -- replaced each time, so it is always the newest commit's. The
-# links stay the same:
+# pull request, and runs the tests (tests/) on Linux. A push to master also
+# puts both up for download as the release "latest" -- replaced each time, so
+# it is always the newest commit's. The links stay the same:
 #   https://github.com/kovarex/kovarex_go_editor/releases/latest/download/kovarex_go_editor.exe
 #   https://github.com/kovarex/kovarex_go_editor/releases/latest/download/kovarex_go_editor-linux-x64.tar.gz
 name: Build
@@ -49,7 +49,7 @@ jobs:
           sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
           sudo apt-get update
           sudo apt-get install -y cmake pkg-config g++-13 libx11-dev libxrandr-dev libxinerama-dev \
-                                  libxcursor-dev libxi-dev libgl1-mesa-dev
+                                  libxcursor-dev libxi-dev libgl1-mesa-dev xvfb libgl1-mesa-dri
       - name: Build
         env:
           CXX: g++-13
@@ -63,6 +63,10 @@ jobs:
       - name: Show the errors
         if: failure()
         run: grep -E "error" build.log | head -n 30 | sed 's/^/::error::/'
+      # The tests click through the editor in its own window: here on a
+      # virtual screen, drawn by Mesa's software OpenGL.
+      - name: Test
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" build/linux/kovarex_go_editor_tests --no-colors
       # A tarball rather than the bare file, which would lose being executable.
       - name: Pack
         run: tar -czf kovarex_go_editor-linux-x64.tar.gz -C build/linux kovarex_go_editor

@@ -44,6 +44,8 @@ public:
   // much smaller than the window and drawn that much bigger. Takes effect as a
   // resize on the next update().
   void setScale(int percent);
+  // Screen pixels per GUI unit: the scale, as a factor.
+  float viewScale() const { return this->graphics.getViewScale(); }
 
   // How long the mouse rests on something before its tooltip shows, in
   // milliseconds; negative for never. Shift shows them at once regardless.
