@@ -97,7 +97,7 @@ void TreeView::refresh()
       this->canvas->clear();
       this->buttons.clear();
       this->litNode   = nullptr;
-      this->underNode = nullptr;
+      this->underNodes.clear();
       this->shownTree = 0;
     }
     return;
@@ -114,16 +114,19 @@ void TreeView::refresh()
 
   if (this->shownRevision != this->game->revision()) {
     this->shownRevision = this->game->revision();
-    // The current node lit, and if its move lands on a stone, the node that
-    // put that stone there in orange.
+    // The current node lit, and if its move lands on a stone, every node that
+    // put a stone on that point under it in orange.
     const sgf::Node* now = &this->game->current();
     const std::optional<Game::StoneOnStone> onStone = this->game->stoneOnStone(*now);
-    const sgf::Node* under = onStone ? onStone->underNode : nullptr;
-    if (now != this->litNode || under != this->underNode) {
-      const sgf::Node* before[] = { this->litNode, this->underNode };
-      this->litNode   = now;
-      this->underNode = under;
-      for (const sgf::Node* n : { before[0], before[1], now, under }) this->restyle(n);
+    std::vector<const sgf::Node*> under = onStone ? onStone->stack : std::vector<const sgf::Node*>();
+    if (now != this->litNode || under != this->underNodes) {
+      const sgf::Node* wasLit = this->litNode;
+      std::swap(this->underNodes, under);  // `under` is now the old ones
+      this->litNode = now;
+      this->restyle(wasLit);
+      for (const sgf::Node* n : under) this->restyle(n);
+      this->restyle(now);
+      for (const sgf::Node* n : this->underNodes) this->restyle(n);
     }
     if (const auto it = this->buttons.find(now); it != this->buttons.end()) {
       this->pane.scrollToMakeWidgetVisible(it->second, ScrollMode::InView);
@@ -142,9 +145,13 @@ agui::ButtonStyle* TreeView::nodeStyle(const sgf::Node& node) const
 {
   const bool current = &node == this->litNode;
   if (this->game->isSelected(node)) return current ? &this->theme.treeNodeSelectedCurrent : &this->theme.treeNodeSelected;
+  // The stones the current move lands on are orange even where their own
+  // moves land on a stone too: they are the ones to look at now.
+  if (std::find(this->underNodes.begin(), this->underNodes.end(), &node) != this->underNodes.end()) {
+    return &this->theme.treeNodeUnder;
+  }
   if (this->game->isStoneOnStone(node)) return current ? &this->theme.treeNodeOnStoneCurrent : &this->theme.treeNodeOnStone;
-  if (current) return &this->theme.treeNodeCurrent;
-  return &node == this->underNode ? &this->theme.treeNodeUnder : &this->theme.treeNode;
+  return current ? &this->theme.treeNodeCurrent : &this->theme.treeNode;
 }
 
 void TreeView::restyle(const sgf::Node* node)
@@ -206,7 +213,7 @@ void TreeView::rebuild()
   this->buttons.clear();
   this->commented.clear();
   this->litNode   = nullptr;
-  this->underNode = nullptr;
+  this->underNodes.clear();
   this->placed.clear();
   this->nextFree.clear();
 

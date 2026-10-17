@@ -75,9 +75,9 @@ private:
   // Places `start` and the first-child line that follows it on the first
   // row free all the way along, then the variations off that line.
   void placeLine(sgf::Node* start, int column, int minRow);
-  // How a node's button is drawn: blue if it is selected; otherwise red if
-  // its move lands on a stone, lit if it is the current node, orange if it
-  // put the stone the current move lands on.
+  // How a node's button is drawn: blue if it is selected; otherwise orange
+  // if it put a stone the current move lands on, whatever else it is; then
+  // red if its move lands on a stone, and lit if it is the current node.
   agui::ButtonStyle* nodeStyle(const sgf::Node& node) const;
   // The node's button drawn as nodeStyle() says, if it has one.
   void restyle(const sgf::Node* node);
@@ -98,7 +98,7 @@ private:
   // The nodes drawn with a comment's mark: drawn again when that changes.
   std::unordered_set<const sgf::Node*> commented;
   const sgf::Node*                              litNode   = nullptr;  // the current node, drawn lit
-  const sgf::Node*                              underNode = nullptr;  // drawn deep orange
+  std::vector<const sgf::Node*>                 underNodes;           // drawn deep orange
 
   uint64_t shownTree      = 0;
   uint64_t shownRevision  = 0;

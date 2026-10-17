@@ -302,6 +302,14 @@ std::optional<Game::StoneOnStone> Game::stoneOnStone(const sgf::Node& node) cons
   s.underNode   = board.origin(s.at);
   s.underIsMove = s.underNode && MoveColor(*s.underNode) != Stone::None;
   s.underNumber = s.underIsMove ? board.moveNumberAt(s.at) : s.underNode ? MoveNumberAt(*s.underNode) : 0;
+
+  // Down the stack: the stone under it, and what that one lands on in turn.
+  if (s.underNode) {
+    s.stack.push_back(s.underNode);
+    if (const std::optional<StoneOnStone> below = this->stoneOnStone(*s.underNode)) {
+      s.stack.insert(s.stack.end(), below->stack.begin(), below->stack.end());
+    }
+  }
   return s;
 }
 

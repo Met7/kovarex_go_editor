@@ -120,6 +120,9 @@ public:
     const sgf::Node* underNode;    // the node that put that stone there: a move, or a set-up
     int              underNumber;  // that move's number; for a set-up, the moves before it
     bool             underIsMove;
+    // Every stone under it on the point, nearest first: underNode, then the
+    // one that lands on, if it lands on one, and so on down.
+    std::vector<const sgf::Node*> stack;
   };
   // Nothing if the move at `node` lands on no stone.
   std::optional<StoneOnStone> stoneOnStone(const sgf::Node& node) const;

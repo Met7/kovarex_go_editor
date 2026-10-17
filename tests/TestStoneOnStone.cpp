@@ -112,6 +112,7 @@ SUITE(StoneOnStone)
     CHECK(!s->underIsMove);
     CHECK_EQUAL(s->underNumber, 0);
     CHECK(s->underNode == &game.root());
+    CHECK(s->stack == std::vector<const sgf::Node*>{ &game.root() });  // a set-up stone is the bottom
 
     game.goToPath(MOVE_5);
     CHECK(!game.stoneOnStone(game.current()).has_value());
@@ -158,12 +159,39 @@ SUITE(StoneOnStone)
     CHECK_EQUAL(game.stonesOnStones().size(), 3u);
   }
 
-  // Three moves on D16: 1 (Black), 4 (White) and 7 (Black). A drag of the
-  // stone there moves the selected move if it is one of them, and the latest
-  // of them played so far if it isn't.
+  // tests/sgf/stacked-stones.sgf: three moves on D16, 1 (Black), 4 (White)
+  // and 7 (Black). Move 7 lands on move 4, which itself lands on move 1.
+  TEST(AStoneOnAStoneOnAStone)
+  {
+    Game game = Record(ReadFile(SampleFile("stacked-stones.sgf")));
+    CHECK_EQUAL(game.stonesOnStones().size(), 2u);
+
+    game.goToPath({ 0, 0, 0, 0, 0, 0, 0 });
+    const std::optional<Game::StoneOnStone> s = game.stoneOnStone(game.current());
+    CHECK(s.has_value());
+    if (!s)
+      return;
+    CHECK_EQUAL(s->underNumber, 4);
+    CHECK(s->underNode && game.isStoneOnStone(*s->underNode));
+    // The whole stack under it, nearest first: move 4, then move 1. All of
+    // it is orange in the game tree.
+    const sgf::Node* move1 = &game.root().child(0);
+    const sgf::Node* move4 = &move1->child(0).child(0).child(0);
+    CHECK((s->stack == std::vector<const sgf::Node*>{ move4, move1 }));
+    CHECK_EQUAL(game.stoneOnStoneReason(game.current()),
+                "Move 7 (Black D16) is played on top of move 4 (White D16), which is still on the board.");
+
+    // Move 4's stack is move 1 alone.
+    game.goToPath({ 0, 0, 0, 0 });
+    const std::optional<Game::StoneOnStone> s4 = game.stoneOnStone(game.current());
+    CHECK(s4 && s4->stack == std::vector<const sgf::Node*>{ move1 });
+  }
+
+  // The same three moves: a drag of the stone on D16 moves the selected move
+  // if it is one of them, and the latest of them played so far if it isn't.
   TEST(DraggingAStackMovesTheSelectedOrTheLatestMove)
   {
-    const char* const RECORD = "(;FF[4]GM[1]SZ[19];B[dd];W[pp];B[dp];W[dd];B[pd];W[qq];B[dd];W[cc])";
+    const std::string RECORD = ReadFile(SampleFile("stacked-stones.sgf"));
     struct Case
     {
       int         selected;  // the move selected

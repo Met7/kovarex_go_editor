@@ -75,7 +75,8 @@ public:
 
   // The game tree: a button per node, the current one lit up. A move played
   // on a stone already there is red, lit or not; while it is the current
-  // node, the move or set-up whose stone it lands on is deep orange.
+  // node, every move or set-up under it on that point is deep orange, even
+  // those that are red themselves.
   agui::ButtonStyle treeNode;
   agui::ButtonStyle treeNodeCurrent;
   // Selected moves: blue, darker on the current one.
