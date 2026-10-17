@@ -4,6 +4,7 @@
 #include <ui/GoSprites.hpp>
 #include <ui/Theme.hpp>
 
+#include <Agui/Font.hpp>
 #include <Agui/Gui.hpp>
 #include <Agui/SystemClipboard.hpp>
 #include <Agui/Widget/Button.hpp>
@@ -782,12 +783,18 @@ void EditorView::layout(int screenWidth, int screenHeight)
   }
 
   // The comment and the tree share what the rest of the panel leaves,
-  // measured off the last layout rather than guessed at.
+  // measured off the last layout rather than guessed at. The status line
+  // has room for two lines kept for it, said or not, so a message coming and
+  // going doesn't move the comment or the tree; a longer one takes what it
+  // needs more off the tree's bottom only.
+  const agui::Font* statusFont = this->status->style.getFont();
+  const int statusH = 2 * (statusFont ? statusFont->getLineHeight() : 0) + this->status->getVerticalPaddings();
+  const int statusOver = std::max(0, this->status->getHeight() - statusH);
   const int inner  = sideW - this->side.getHorizontalPaddings();
-  const int chrome = this->side.getVerticalPaddings() + this->upper->getHeight() + this->status->getHeight() + 3 * 4 + 8;
+  const int chrome = this->side.getVerticalPaddings() + this->upper->getHeight() + statusH + 3 * 4 + 8;
   const int room   = std::max(MIN_COMMENT_H + MIN_TREE_H, sideH - chrome);
   const int commentH = std::clamp(room / 4, MIN_COMMENT_H, MAX_COMMENT_H);
-  const int treeH    = std::max(MIN_TREE_H, room - commentH);
+  const int treeH    = std::max(MIN_TREE_H, room - commentH - statusOver);
   if (this->comment->getWidth() != inner || this->comment->getHeight() != commentH) {
     Pin(*this->comment, this->comment->style, inner, commentH);
   }
