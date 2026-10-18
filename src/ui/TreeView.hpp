@@ -1,11 +1,12 @@
 // The game tree: every node of the record as a small button, moves left to
 // right, the main line along the top and each variation branching down off
-// the move it varies from. Click a node to go there.
+// the move it varies from. Click a node to go there; Shift or Ctrl and click
+// to select moves, for the Variation group's edits to act on instead.
 //
 // Built from widgets like the rest -- a button per node, and the lines
 // between them as stretched pictures -- on a canvas in a scroll pane. It is
-// laid out again only when nodes come or go; stepping through the game just
-// moves the highlight.
+// laid out again only when nodes come or go or the selection changes;
+// stepping through the game just moves the highlight.
 
 #pragma once
 
@@ -49,6 +50,13 @@ public:
   // digits to fit.
   void setNumbers(bool on);
 
+  // The button standing for `node`, or null if it has none (yet).
+  agui::Button* nodeButton(const sgf::Node& node) const
+  {
+    const auto it = this->buttons.find(&node);
+    return it == this->buttons.end() ? nullptr : it->second;
+  }
+
 private:
   struct Placed {
     sgf::Node* node;
@@ -67,6 +75,11 @@ private:
   // Places `start` and the first-child line that follows it on the first
   // row free all the way along, then the variations off that line.
   void placeLine(sgf::Node* start, int column, int minRow);
+  // How a node's button is drawn: blue if it is selected, lit if it is the
+  // current node.
+  agui::ButtonStyle* nodeStyle(const sgf::Node& node, bool current) const;
+  // A node clicked: Shift or Ctrl selects up to it, a plain click goes there.
+  void clicked(sgf::Node& node);
 
   Theme&           theme;
   const GoSprites& sprites;
@@ -82,9 +95,11 @@ private:
   // The nodes drawn with a comment's mark: drawn again when that changes.
   std::unordered_set<const sgf::Node*> commented;
   agui::Button*                                 lit = nullptr;
+  const sgf::Node*                              litNode = nullptr;  // whose button `lit` is
 
-  uint64_t shownTree     = 0;
-  uint64_t shownRevision = 0;
+  uint64_t shownTree      = 0;
+  uint64_t shownRevision  = 0;
+  uint64_t shownSelection = 0;
   bool     numbers       = true;
 };
 

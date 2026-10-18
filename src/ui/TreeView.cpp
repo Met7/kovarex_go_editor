@@ -1,6 +1,7 @@
 #include <ui/TreeView.hpp>
 
 #include <ui/Form.hpp>
+#include <ui/Input.hpp>
 #include <ui/Theme.hpp>
 
 #include <Agui/Widget/ImageWidget.hpp>
@@ -18,6 +19,9 @@ namespace {
 constexpr int PAD = 4;
 // A node with its move number on it: big enough for three digits.
 constexpr int NUMBERED_NODE_PX = 32;
+// The + and - on a branch leaving the selection: small enough to sit on the
+// line between two nodes.
+constexpr int BRANCH_BUTTON_PX = 14;
 
 void Pin(agui::Widget& widget, agui::Style& style, int w, int h)
 {
@@ -92,15 +96,19 @@ void TreeView::refresh()
       this->canvas->clear();
       this->buttons.clear();
       this->lit       = nullptr;
+      this->litNode   = nullptr;
       this->shownTree = 0;
     }
     return;
   }
 
-  if (this->shownTree != this->game->treeRevision()) {
+  // The selection changes which nodes are blue and where the + and - go:
+  // drawn again, like a change to the tree.
+  if (this->shownTree != this->game->treeRevision() || this->shownSelection != this->game->selectionRevision()) {
     this->rebuild();
-    this->shownTree     = this->game->treeRevision();
-    this->shownRevision = 0;
+    this->shownTree      = this->game->treeRevision();
+    this->shownSelection = this->game->selectionRevision();
+    this->shownRevision  = 0;
   }
 
   if (this->shownRevision != this->game->revision()) {
@@ -109,14 +117,15 @@ void TreeView::refresh()
     agui::Button* now = it == this->buttons.end() ? nullptr : it->second;
     if (now != this->lit) {
       if (this->lit) {
-        this->lit->style.setParent(&this->theme.treeNode);
+        this->lit->style.setParent(this->nodeStyle(*this->litNode, false));
         CentreIcon(*this->lit);
       }
       if (now) {
-        now->style.setParent(&this->theme.treeNodeCurrent);
+        now->style.setParent(this->nodeStyle(this->game->current(), true));
         CentreIcon(*now);
       }
-      this->lit = now;
+      this->lit     = now;
+      this->litNode = now ? &this->game->current() : nullptr;
     }
     if (now) this->pane.scrollToMakeWidgetVisible(now, ScrollMode::InView);
     // A comment written or wiped here changes the node's mark, not the tree.
@@ -126,6 +135,27 @@ void TreeView::refresh()
       this->refresh();
       return;
     }
+  }
+}
+
+agui::ButtonStyle* TreeView::nodeStyle(const sgf::Node& node, bool current) const
+{
+  if (this->game->isSelected(node)) return current ? &this->theme.treeNodeSelectedCurrent : &this->theme.treeNodeSelected;
+  return current ? &this->theme.treeNodeCurrent : &this->theme.treeNode;
+}
+
+void TreeView::clicked(sgf::Node& node)
+{
+  // Shift: the moves from the current one to this, in place of what was
+  // selected; Ctrl: those from the selection to this, added to it. Neither
+  // goes anywhere. A plain click lets go of the selection and goes there.
+  if (input::IsKeyDown(KEY_LEFT_SHIFT) || input::IsKeyDown(KEY_RIGHT_SHIFT)) {
+    this->game->selectRange(node);
+  } else if (input::IsKeyDown(KEY_LEFT_CONTROL) || input::IsKeyDown(KEY_RIGHT_CONTROL)) {
+    this->game->extendSelection(node);
+  } else {
+    if (!this->game->selection().empty()) this->game->clearSelection();
+    this->game->goTo(node);
   }
 }
 
@@ -161,7 +191,8 @@ void TreeView::rebuild()
   this->canvas->clear();
   this->buttons.clear();
   this->commented.clear();
-  this->lit = nullptr;
+  this->lit     = nullptr;
+  this->litNode = nullptr;
   this->placed.clear();
   this->nextFree.clear();
 
@@ -215,7 +246,7 @@ void TreeView::rebuild()
   }
 
   for (const Placed& p : this->placed) {
-    agui::Button& button = make<agui::Button>(&this->theme.treeNode);
+    agui::Button& button = make<agui::Button>(this->nodeStyle(*p.node, false));
     button.setFocusable(false);
     Pin(button, button.style, NODE, NODE);
 
@@ -261,11 +292,37 @@ void TreeView::rebuild()
     if (p.node->has("C")) button.setToolTip(p.node->get("C").substr(0, 300));
 
     sgf::Node* node = p.node;
-    button.onClick(this, [this, node] { this->game->goTo(*node); });
+    button.onClick(this, [this, node] { this->clicked(*node); });
     const int offset = (PITCH - NODE) / 2;
     button.setLocation(PAD + p.column * PITCH + offset, PAD + p.row * PITCH + offset);
     *this->canvas << button;
     this->buttons[p.node] = &button;
+  }
+
+  // Where a branch leaves a selected move, on the line to it: a + to take the
+  // branch in, all of it; or, where more than one branch from there is in, a -
+  // on each to leave it out again. A line just going on is no branch.
+  for (const Placed& p : this->placed) {
+    const sgf::Node* from = p.node->parent();
+    if (!from || from->childCount() < 2 || !this->game->isSelected(*from)) continue;
+    const bool in = this->game->isSelected(*p.node);
+    int inFrom = 0;
+    for (size_t k = 0; k < from->childCount(); ++k) inFrom += this->game->isSelected(from->child(k)) ? 1 : 0;
+    if (in && inFrom < 2) continue;
+
+    const auto [fromColumn, fromRow] = where[from];
+    // The middle of the line: across to the main line's next move, or the
+    // diagonal down to a variation.
+    const int x = this->centre(fromColumn) + PITCH / 2;
+    const int y = p.node->indexInParent() == 0 ? this->centre(fromRow) : this->centre(p.row - 1) + PITCH / 2;
+    agui::Button& toggle = agui::button(in ? "\xE2\x88\x92" : "+", nullptr, nullptr, &this->theme.treeBranchButton);
+    toggle.setFocusable(false);
+    toggle.setToolTip(in ? "Leave this branch out of the selection" : "Take this branch into the selection, all of it");
+    Pin(toggle, toggle.style, BRANCH_BUTTON_PX, BRANCH_BUTTON_PX);
+    toggle.setLocation(x - BRANCH_BUTTON_PX / 2, y - BRANCH_BUTTON_PX / 2);
+    const sgf::Node* branch = p.node;
+    toggle.onClick(this, [this, branch, in] { this->game->selectBranch(*branch, !in); });
+    *this->canvas << toggle;
   }
 
   Pin(*this->canvas, this->canvas->style, columns * PITCH + 2 * PAD, rows * PITCH + 2 * PAD);

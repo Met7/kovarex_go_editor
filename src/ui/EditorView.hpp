@@ -57,6 +57,10 @@ public:
   void setTreeNumbers(bool on);
   // The Navigate, Moves and Variation groups, or not: their keys do the same.
   void setNavigationButtons(bool shown);
+  // The game tree, and the Variation group -- the selection's, while moves
+  // are selected in the tree.
+  TreeView&     gameTree() { return this->tree; }
+  agui::Widget& variationButtons() { return *this->variationGroup; }
   // The row for a node's name and how good its position and move are: shown
   // when `on`, and anyway for a game that has any of that.
   void setEvaluation(bool on);
@@ -155,6 +159,10 @@ private:
   agui::TextBox*   comment = nullptr;
   agui::Widget*    upper = nullptr;  // everything in the side panel above the comment
   agui::Widget*    navigation = nullptr;  // the Navigate, Moves and Variation groups
+  agui::Widget*    variationGroup = nullptr;
+  agui::Label*     variationCaption = nullptr;  // "Selection" while moves are selected
+  agui::Button*    mainLineButton = nullptr;
+  agui::Button*    cancelSelectionButton = nullptr;  // in Main line's place while moves are selected
   bool             navigationShown = true;
   agui::Widget*    evaluationRow = nullptr;  // the node's name, and the position's and move's notes
   bool             evaluationOn  = false;

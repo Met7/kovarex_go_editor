@@ -141,7 +141,7 @@ const std::vector<Control>& AllControls()
     { "game-info", Command::GameInfo, "Game information",   nullptr, S::Files, false, CtrlKey(KEY_I) },
     { "ai-sensei", Command::AiSensei, "Review on AI Sensei", "Opens AI Sensei's upload page in the browser, with the game on it.", S::Files, false, NONE },
 
-    { "cancel",          Command::Cancel,         "Close or cancel",      "Closes a page, leaves a text box, or drops a half-drawn arrow.", S::Interface, false, Key(KEY_ESCAPE) },
+    { "cancel",          Command::Cancel,         "Close or cancel",      "Closes a page, leaves a text box, lets go of the moves selected in the game tree, or drops a half-drawn arrow.", S::Interface, false, Key(KEY_ESCAPE) },
     { "settings",        Command::Settings,       "Settings",             nullptr, S::Interface, false, NONE },
     { "controls",        Command::Controls,       "Controls",             nullptr, S::Interface, false, NONE },
     { "host",            Command::Host,           "Host",                 "Starting a session, to share the game with other editors.", S::Interface, false, NONE },

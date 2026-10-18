@@ -350,11 +350,20 @@ agui::Widget& EditorView::buildNavigation()
 
   agui::HorizontalFlow& variation = row(4);
   variation << this->commandButton("Delete", Command::DeleteBranch, "Delete this move and everything after it");
-  variation << this->commandButton("Main line", Command::PromoteMainLine, "Make this line the main line");
   variation << this->commandButton("Cut", Command::Cut, "Cut this move and everything after it");
   variation << this->commandButton("Copy", Command::Copy, "Copy this move and everything after it");
   variation << this->commandButton("Paste", Command::Paste, "Paste what was cut or copied as a new variation here");
-  rows << (this->group("Variation") << variation);
+  // Last, as one of the two is shown at a time.
+  this->mainLineButton = &this->commandButton("Main line", Command::PromoteMainLine, "Make this line the main line");
+  this->cancelSelectionButton = &this->commandButton("Cancel", Command::Cancel, "Let go of the selected moves");
+  this->cancelSelectionButton->setVisible(false);
+  variation << *this->mainLineButton << *this->cancelSelectionButton;
+  // Its edits are the selection's while moves are selected in the game tree:
+  // it says so, and has Cancel for Main line then (refresh).
+  this->variationCaption = &agui::label("Variation", &this->theme.captionLabel);
+  this->variationGroup   = &(make<agui::Frame>(agui::GuiDirection::Vertical, &this->theme.borderedFrame)
+                           << *this->variationCaption << variation);
+  rows << *this->variationGroup;
 
   // All of it goes without the navigation buttons (setNavigationButtons).
   this->navigation = &rows;
@@ -545,9 +554,10 @@ void EditorView::run(Command command)
     return;
   }
   if (command == Command::Cancel) {
-    // Esc lets go of a text box first, then of a half-drawn arrow, then goes
-    // back to playing moves.
+    // Esc lets go of a text box first, then of the moves selected in the
+    // game tree, then of a half-drawn arrow, then goes back to playing moves.
     if (this->typing()) this->gui.clearFocus();
+    else if (this->game && !this->game->selection().empty()) this->game->clearSelection();
     else {
       this->board.cancel();
       this->setTool(Tool::Play);
@@ -570,7 +580,9 @@ void EditorView::run(Command command)
     if (!this->game->nextVariation()) this->message("This is the last variation here.", false);
     break;
   case Command::Pass:            this->report(this->game->pass()); break;
-  case Command::DeleteBranch:    this->report(this->game->deleteBranch()); break;
+  case Command::DeleteBranch:
+    this->report(this->game->selection().empty() ? this->game->deleteBranch() : this->game->deleteSelection());
+    break;
   case Command::PromoteMainLine: this->report(this->game->promoteToMainLine()); break;
   case Command::RotateLeft:      this->report(this->game->transform(BoardTransform::RotateLeft)); break;
   case Command::RotateRight:     this->report(this->game->transform(BoardTransform::RotateRight)); break;
@@ -583,10 +595,27 @@ void EditorView::run(Command command)
     if (!this->game->redo()) this->message("Nothing to redo.", false);
     break;
   case Command::Copy:
+    if (!this->game->selection().empty()) {
+      agui::SystemClipboard::copy(this->game->copySelection());
+      this->message("Copied the selected moves.");
+      break;
+    }
     agui::SystemClipboard::copy(this->game->copyBranch());
     this->message(this->game->current().parent() ? "Copied this move and everything after it." : "Copied the whole game.");
     break;
   case Command::Cut:
+    if (!this->game->selection().empty()) {
+      // Nothing is cut that can't be deleted.
+      const std::string copied = this->game->copySelection();
+      const Outcome     outcome = this->game->deleteSelection();
+      if (!outcome.ok) {
+        this->report(outcome);
+        break;
+      }
+      agui::SystemClipboard::copy(copied);
+      this->message("Cut the selected moves.");
+      break;
+    }
     // Nothing is cut that can't be deleted: the start of the game can't.
     if (!this->game->current().parent()) {
       this->message("The start of the game can't be cut, only copied: that copies the whole game.", false);
@@ -665,6 +694,14 @@ void EditorView::placeIcons()
 
 void EditorView::refresh()
 {
+  if (this->game) {
+    const std::string caption = this->game->selection().empty() ? "Variation" : "Selection";
+    if (this->variationCaption->getText() != caption) {
+      this->variationCaption->setText(caption);
+      this->mainLineButton->setVisible(caption == "Variation");
+      this->cancelSelectionButton->setVisible(caption == "Selection");
+    }
+  }
   if (!this->game || this->shownRevision == this->game->revision()) return;
   this->shownRevision = this->game->revision();
   this->showEvaluation();

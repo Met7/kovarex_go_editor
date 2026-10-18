@@ -68,6 +68,30 @@ bool Apply(Position& position, const sgf::Node& node, int& number, int width, in
   return !occupied;
 }
 
+// The nodes from `a` to `b`, both included: up from `a` to where their lines
+// part, and down to `b`.
+std::vector<const sgf::Node*> Between(const sgf::Node& a, const sgf::Node& b)
+{
+  const std::vector<const sgf::Node*> up   = Game::Path(a);
+  const std::vector<const sgf::Node*> down = Game::Path(b);
+  size_t common = 0;  // both paths start at the root
+  while (common < up.size() && common < down.size() && up[common] == down[common]) ++common;
+  std::vector<const sgf::Node*> nodes(up.begin() + ptrdiff_t(common) - 1, up.end());
+  nodes.insert(nodes.end(), down.begin() + ptrdiff_t(common), down.end());
+  return nodes;
+}
+
+// A copy of `node` with only those of the nodes under it that are in `keep`.
+std::unique_ptr<sgf::Node> CloneSelected(const sgf::Node& node, const std::unordered_set<const sgf::Node*>& keep)
+{
+  auto copy = std::make_unique<sgf::Node>();
+  for (const sgf::Property& p : node.properties()) copy->setValues(p.id, p.values);
+  for (size_t k = 0; k < node.childCount(); ++k) {
+    if (keep.contains(&node.child(k))) copy->addChild(CloneSelected(node.child(k), keep));
+  }
+  return copy;
+}
+
 }  // namespace
 
 const char* MarkProperty(Mark mark)
@@ -401,7 +425,10 @@ void Game::restore(Snapshot& snapshot)
 void Game::touched(bool structural)
 {
   ++this->changes;
-  if (structural) ++this->treeChanges;
+  if (!structural) return;
+  ++this->treeChanges;
+  // The nodes may be gone, or moved: what was selected can't be told any more.
+  if (!this->selected.empty()) this->clearSelection();
 }
 
 bool Game::undo()
@@ -590,6 +617,120 @@ Outcome Game::promoteToMainLine()
   }
   this->touched(true);
   return Outcome::Done("This line is now the main line.");
+}
+
+// ---------------------------------------------------------------- the selection
+
+void Game::selectRange(const sgf::Node& node)
+{
+  this->selected.clear();
+  for (const sgf::Node* n : Between(*this->cursor, node)) this->selected.insert(n);
+  ++this->selectionChanges;
+}
+
+void Game::extendSelection(const sgf::Node& node)
+{
+  if (this->selected.empty()) return this->selectRange(node);
+  // From the selected move nearest to it, so the selection stays in one piece.
+  std::vector<const sgf::Node*> shortest;
+  for (const sgf::Node* from : this->selected) {
+    std::vector<const sgf::Node*> way = Between(*from, node);
+    if (shortest.empty() || way.size() < shortest.size()) shortest = std::move(way);
+  }
+  this->selected.insert(shortest.begin(), shortest.end());
+  ++this->selectionChanges;
+}
+
+void Game::selectBranch(const sgf::Node& start, bool on)
+{
+  std::vector<const sgf::Node*> todo{ &start };
+  while (!todo.empty()) {
+    const sgf::Node* n = todo.back();
+    todo.pop_back();
+    if (on) this->selected.insert(n);
+    else    this->selected.erase(n);
+    for (size_t k = 0; k < n->childCount(); ++k) todo.push_back(&n->child(k));
+  }
+  ++this->selectionChanges;
+}
+
+void Game::clearSelection()
+{
+  this->selected.clear();
+  ++this->selectionChanges;
+}
+
+const sgf::Node* Game::selectionTop() const
+{
+  for (const sgf::Node* n : this->selected) {
+    if (!n->parent() || !this->selected.contains(n->parent())) return n;
+  }
+  return nullptr;
+}
+
+std::string Game::copySelection() const
+{
+  const sgf::Node* top = this->selectionTop();
+  if (!top) return {};
+  sgf::Collection copy;
+  copy.games.push_back(CloneSelected(*top, this->selected));
+  return sgf::Write(copy);
+}
+
+Outcome Game::deleteSelection()
+{
+  const sgf::Node* top = this->selectionTop();
+  if (!top) return Outcome::Fail("Nothing is selected: Shift or Ctrl and click the game tree to select moves.");
+  sgf::Node* parent = top->parent();
+  if (!parent) return Outcome::Fail("The start of the game can't be deleted.");
+
+  // Where the selection stops part way along a line -- a selected move whose
+  // one next move isn't -- the moves after it stay. Of several such lines,
+  // the first: down the main line before the variations.
+  sgf::Node* rest = nullptr;
+  std::vector<const sgf::Node*> todo{ top };
+  while (!todo.empty() && !rest) {
+    const sgf::Node* n = todo.back();
+    todo.pop_back();
+    if (n->childCount() == 1 && !this->isSelected(n->child(0))) rest = &n->child(0);
+    for (size_t k = n->childCount(); k-- > 0;) {
+      if (this->isSelected(n->child(k))) todo.push_back(&n->child(k));
+    }
+  }
+
+  // What stays has to fit where it goes.
+  if (rest) {
+    int            numberBefore = 0;
+    const Position before       = this->positionBefore(*top, &numberBefore);
+    int            number       = 0;
+    if (const sgf::Node* clash = this->firstConflict(*rest, before, numberBefore, &number)) {
+      return Outcome::Fail("Can't delete those: move " + std::to_string(number) + " (" + ColorName(MoveColor(*clash)) + " " +
+                           DisplayName(this->movePoint(*clash), this->w, this->h) + ") would then land on a stone.");
+    }
+  }
+
+  // The editor stays where it is if that stays, and goes to where the
+  // selection started if not.
+  const auto under = [](const sgf::Node* n, const sgf::Node* ancestor) {
+    for (; n; n = n->parent()) {
+      if (n == ancestor) return true;
+    }
+    return false;
+  };
+  const bool cursorGoes = under(this->cursor, top) && !(rest && under(this->cursor, rest));
+  const size_t count    = this->selected.size();
+
+  this->beginEdit();
+  const size_t index = size_t(top->indexInParent());
+  std::unique_ptr<sgf::Node> removed = parent->detachChild(index);
+  if (rest) parent->addChild(rest->parent()->detachChild(size_t(rest->indexInParent())), index);
+  if (cursorGoes) this->cursor = parent;
+  this->lastVisited.clear();
+  this->remember(*this->cursor);
+  this->touched(true);
+
+  const std::string what = count == 1 ? "Deleted the selected move" : "Deleted the " + std::to_string(count) + " selected moves";
+  return Outcome::Done(what + (rest ? "; the moves after them follow on from where they started." : "."));
 }
 
 // ---------------------------------------------------------------- turning the board

@@ -495,6 +495,9 @@ Theme::Theme(float scale)
     , coordinate(&agui::Label::defaultStyle)
     , treeNode(&agui::Button::defaultStyle)
     , treeNodeCurrent(&this->treeNode)
+    , treeNodeSelected(&this->treeNode)
+    , treeNodeSelectedCurrent(&this->treeNode)
+    , treeBranchButton(&agui::Button::defaultStyle)
     , treeNumberDark(&this->pointDark)
     , treeNumberLight(&this->pointLight)
     , toolButton(&agui::Button::defaultStyle)
@@ -1419,6 +1422,19 @@ void Theme::themeBoard()
   this->treeNode.setHoveredGraphicalSet(&lit);
   this->treeNode.setClickedGraphicalSet(&lit);
   for (auto set : allSets) (this->treeNodeCurrent.*set)(&current);
+  // Selected: the pale selected button tinted blue, apart from the oranges of
+  // the cursor and the current node.
+  const agui::ElementImageSet selected        = Set(this->layer(Expand(352, 17, 8), { .tint = Rgb(120, 170, 255) }));
+  const agui::ElementImageSet selectedLit     = Set(this->layer(Expand(352, 17, 8), { .tint = Rgb(160, 200, 255) }));
+  const agui::ElementImageSet selectedCurrent = Set(this->layer(Expand(352, 17, 8), { .tint = Rgb(60, 110, 230) }));
+  for (auto set : allSets) (this->treeNodeSelected.*set)(&selected);
+  this->treeNodeSelected.setHoveredGraphicalSet(&selectedLit);
+  this->treeNodeSelected.setClickedGraphicalSet(&selectedLit);
+  for (auto set : allSets) (this->treeNodeSelectedCurrent.*set)(&selectedCurrent);
+  // The branch's + and -: a button, as small as one goes, on the line.
+  this->treeBranchButton.setPaddings(0, 0, 0, 0);
+  this->treeBranchButton.setFont(&this->smallFont);
+  this->treeBranchButton.setClickedVerticalOffset(0);
 
   // The numbers on the tree's stones: the board's colours, at one size that
   // fits three digits on a stone.
