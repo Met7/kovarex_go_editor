@@ -35,6 +35,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -170,6 +171,37 @@ public:
   // new branches off.
   Outcome pasteBranch(std::string_view text);
 
+  // --- the selection: moves picked out in the game tree, for edits on just
+  // those moves. It is always connected -- every selected move is joined to
+  // the others through selected moves -- so it has one top, the move it
+  // starts from. Nodes come and go with edits, so anything that changes the
+  // tree's shape lets go of it. ---
+
+  const std::unordered_set<const sgf::Node*>& selection() const { return this->selected; }
+  bool isSelected(const sgf::Node& node) const { return this->selected.contains(&node); }
+  // Bumped whenever the selection changes, so the tree knows to draw it again.
+  uint64_t selectionRevision() const { return this->selectionChanges; }
+
+  // Shift+click: the selection becomes the moves from the current one to
+  // `node`, both included -- up to where their lines part, if they do, and
+  // down again.
+  void selectRange(const sgf::Node& node);
+  // Ctrl+click: adds the moves from the nearest one already selected to
+  // `node`. With nothing selected, as selectRange().
+  void extendSelection(const sgf::Node& node);
+  // A branch's + and -: `start` and everything after it, in or out.
+  void selectBranch(const sgf::Node& start, bool on);
+  void clearSelection();
+
+  // The selected moves as SGF, as they hang together and nothing else.
+  std::string copySelection() const;
+  // Takes the selected moves out. A branch leaving the selection with none
+  // of it selected goes with them. Where the selection stops part way along
+  // a line, the moves after it are kept and hang on where the selection
+  // started -- for the first such line, the main line before its
+  // variations; the others go.
+  Outcome deleteSelection();
+
   // Set-up stones. `color` None clears the point; a colour that is already
   // there takes it away again. Set-up never shares a node with a move, so
   // after a move this starts a new node for it.
@@ -296,6 +328,11 @@ private:
 
   uint64_t changes     = 1;
   uint64_t treeChanges = 1;
+
+  // The selected nodes, and the top one of them: the one whose parent isn't.
+  std::unordered_set<const sgf::Node*> selected;
+  uint64_t                             selectionChanges = 0;
+  const sgf::Node*                     selectionTop() const;
 
   // The text property last typed into, so a burst of typing is one undo step.
   const sgf::Node* textNode = nullptr;

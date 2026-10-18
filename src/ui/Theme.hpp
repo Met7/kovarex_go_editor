@@ -76,6 +76,12 @@ public:
   // The game tree: a button per node, the current one lit up.
   agui::ButtonStyle treeNode;
   agui::ButtonStyle treeNodeCurrent;
+  // Selected moves: blue, darker on the current one.
+  agui::ButtonStyle treeNodeSelected;
+  agui::ButtonStyle treeNodeSelectedCurrent;
+  // The small + and - where a branch leaves the selection: takes it in, or
+  // leaves it out again.
+  agui::ButtonStyle treeBranchButton;
   // A move's number on its stone in the tree: dark on white, light on black.
   agui::LabelStyle  treeNumberDark;
   agui::LabelStyle  treeNumberLight;
