@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <map>
+#include <span>
 #include <string>
 
 namespace ui {
@@ -60,6 +61,12 @@ constexpr MouseAction MOUSE[] = {
   { "Clear a point", "With a mark tool: takes off whatever mark is there.", "Right-click", nullptr },
   { "Show tooltips at once", "Whatever the tooltip delay in Settings says.", "Hold Shift", nullptr },
 };
+// And in the game tree: picking out moves for the Variation group's edits.
+constexpr MouseAction TREE[] = {
+  { "Select moves", "From the current move to the one clicked, in place of what was selected before. Delete, Cut and Copy then act on just those.",
+    "Shift + click a move", nullptr },
+  { "Add to the selection", "The moves from the selection to the one clicked, additionally to what was selected before.", "Ctrl + click a move", nullptr },
+};
 
 }  // namespace
 
@@ -85,7 +92,8 @@ ControlsPage::ControlsPage(Theme& theme, const Settings& live, std::function<voi
   *this->scroll << this->section("Tools", ControlSection::Tools);
   *this->scroll << this->section("Files", ControlSection::Files);
   *this->scroll << this->section("Interface", ControlSection::Interface);
-  *this->scroll << this->mouseSection();
+  *this->scroll << this->mouseSection(false);
+  *this->scroll << this->mouseSection(true);
 
   agui::HorizontalFlow& strip = row();
   strip.style.setHorizontallyStretchable(true);
@@ -165,17 +173,17 @@ agui::Widget& ControlsPage::section(const char* caption, ControlSection which)
   return frame;
 }
 
-agui::Widget& ControlsPage::mouseSection()
+agui::Widget& ControlsPage::mouseSection(bool tree)
 {
   agui::Frame& frame = make<agui::Frame>(agui::GuiDirection::Vertical, &this->theme.shallowFrame);
   this->found.push_back({ &frame, {} });
   agui::HorizontalFlow& header = make<agui::HorizontalFlow>(&this->theme.playerInputFlow);
   header.style.setLeftPadding(8);
-  header << agui::label("The mouse on the board", &this->theme.captionLabel) << agui::pusher;
+  header << agui::label(tree ? "The mouse in the game tree" : "The mouse on the board", &this->theme.captionLabel) << agui::pusher;
   frame << header;
 
   agui::Table& table = make<agui::Table>(1u, &this->theme.controlTable);
-  for (const MouseAction& action : MOUSE) {
+  for (const MouseAction& action : tree ? std::span<const MouseAction>(TREE) : std::span<const MouseAction>(MOUSE)) {
     agui::HorizontalFlow& line = make<agui::HorizontalFlow>(&this->theme.playerInputFlow);
     line << this->name(action.name, action.tip) << agui::pusher;
     this->found.back().lines.push_back({ &line, action.name, {} });

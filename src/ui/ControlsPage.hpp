@@ -77,9 +77,9 @@ private:
   const KeyCombo& keys(const Slot& slot, const Settings& settings) const;
 
   // A section of `rows` with its caption; the controls of `section`, or
-  // what the mouse does on the board.
+  // what the mouse does on the board or in the game tree.
   agui::Widget& section(const char* caption, ControlSection which);
-  agui::Widget& mouseSection();
+  agui::Widget& mouseSection(bool tree);
   // A control's name, followed by an info icon when it has a tooltip.
   agui::Widget& name(const char* text, const char* tip);
 

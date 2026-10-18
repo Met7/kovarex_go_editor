@@ -329,4 +329,13 @@ SUITE(Selection)
     CHECK(!scenario.shows("Cancel"));
     CHECK_EQUAL(scenario.game().moveNumber(), 2);
   }
+
+  TEST(TheControlsPageListsTheClicks)
+  {
+    TestScenarioGui scenario;
+    scenario.clickSelectText("Controls");
+    CHECK(scenario.shows("The mouse in the game tree"));
+    CHECK(scenario.shows("Shift + click a move"));
+    CHECK(scenario.shows("Ctrl + click a move"));
+  }
 }
