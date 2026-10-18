@@ -161,10 +161,13 @@ public:
   // The current node and everything after it; at the start of the game, the
   // whole game. Cut is this and deleteBranch().
   std::string copyBranch() const;
-  // An SGF record hung on the current node as a new variation, and the
-  // editor moved onto it. A whole game -- from a file, or another program --
-  // keeps only what isn't about the game: its moves, and any set-up in its
-  // root. Refused if the board size differs or a move lands on a stone.
+  // An SGF record hung on the current node, and the editor moved onto it.
+  // Where its moves are the same as moves already here -- comments, marks
+  // and all -- it merges into them, and only where they differ does it
+  // branch off as a new variation, in as many places as it differs. A whole
+  // game -- from a file, or another program -- keeps only what isn't about
+  // the game: its moves, and any set-up in its root. Refused if the board
+  // size differs or a move lands on a stone.
   Outcome pasteBranch(std::string_view text);
 
   // Set-up stones. `color` None clears the point; a colour that is already

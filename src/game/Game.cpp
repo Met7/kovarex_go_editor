@@ -68,6 +68,62 @@ bool Apply(Position& position, const sgf::Node& node, int& number, int width, in
   return !occupied;
 }
 
+// ---------------------------------------------------------------- pasting
+
+// Whether two nodes say the same: the same properties with the same values,
+// whatever order either is written in. A comment, a mark, a name -- any
+// difference at all makes them different moves.
+bool SameNode(const sgf::Node& a, const sgf::Node& b)
+{
+  if (a.properties().size() != b.properties().size()) return false;
+  for (const sgf::Property& p : a.properties()) {
+    const sgf::Property* q = b.find(p.id);
+    if (!q || q->values.size() != p.values.size()) return false;
+    std::vector<std::string> mine = p.values, theirs = q->values;
+    std::sort(mine.begin(), mine.end());
+    std::sort(theirs.begin(), theirs.end());
+    if (mine != theirs) return false;
+  }
+  return true;
+}
+
+// The child of `parent` that says the same as `node`, or null.
+sgf::Node* FindSame(const sgf::Node& parent, const sgf::Node& node)
+{
+  for (size_t k = 0; k < parent.childCount(); ++k) {
+    if (SameNode(parent.child(k), node)) return &parent.child(k);
+  }
+  return nullptr;
+}
+
+// Whether `pasted` and everything under it is already under `parent`.
+bool AllThere(const sgf::Node& parent, const sgf::Node& pasted)
+{
+  const sgf::Node* same = FindSame(parent, pasted);
+  if (!same) return false;
+  for (size_t k = 0; k < pasted.childCount(); ++k) {
+    if (!AllThere(*same, pasted.child(k))) return false;
+  }
+  return true;
+}
+
+// Pastes `pasted` under `parent`: down every node the record already has the
+// same of, and a new variation wherever it differs -- so a whole subtree can
+// merge and branch off in several places. The new variations go in `added`,
+// the nodes found already there are counted in `merged`. Returns the node
+// `pasted` itself came to be.
+sgf::Node* Merge(sgf::Node& parent, std::unique_ptr<sgf::Node> pasted, std::vector<sgf::Node*>& added, int& merged)
+{
+  if (sgf::Node* same = FindSame(parent, *pasted)) {
+    ++merged;
+    while (pasted->childCount() > 0) Merge(*same, pasted->detachChild(0), added, merged);
+    return same;
+  }
+  sgf::Node& node = parent.addChild(std::move(pasted));
+  added.push_back(&node);
+  return &node;
+}
+
 }  // namespace
 
 const char* MarkProperty(Mark mark)
@@ -733,23 +789,37 @@ Outcome Game::pasteBranch(std::string_view text)
   }
   if (branches.empty()) return Outcome::Fail("There are no moves on the clipboard to paste.");
 
+  // Moves the record already has are gone down into rather than pasted again:
+  // a new variation starts only where something differs.
+  if (std::all_of(branches.begin(), branches.end(),
+                  [this](const std::unique_ptr<sgf::Node>& branch) { return AllThere(*this->cursor, *branch); })) {
+    this->goTo(*FindSame(*this->cursor, *branches.front()));
+    return Outcome::Done("Those moves are already here.");
+  }
+
   this->beginEdit();
   std::vector<sgf::Node*> added;
-  for (std::unique_ptr<sgf::Node>& branch : branches) added.push_back(&this->cursor->addChild(std::move(branch)));
+  int                     merged = 0;
+  sgf::Node*              first  = nullptr;
+  for (std::unique_ptr<sgf::Node>& branch : branches) {
+    sgf::Node* at = Merge(*this->cursor, std::move(branch), added, merged);
+    if (!first) first = at;
+  }
 
-  int             numberBefore = 0;
-  const Position  before       = this->positionBefore(*added.front(), &numberBefore);
   for (const sgf::Node* node : added) {
-    int number = 0;
+    int            numberBefore = 0;
+    const Position before       = this->positionBefore(*node, &numberBefore);
+    int            number       = 0;
     if (this->firstConflict(*node, before, numberBefore, &number)) {
       this->rollback();
       return Outcome::Fail("Those moves don't fit here: move " + std::to_string(number) + " would land on a stone.");
     }
   }
 
-  this->cursor = added.front();
+  this->cursor = first;
   this->remember(*this->cursor);
   this->touched(true);
+  if (merged > 0) return Outcome::Done("Merged with the moves already here, adding only what differs.");
   return Outcome::Done(added.size() == 1 ? std::string()
                                          : "Pasted " + std::to_string(added.size()) + " variations; this is the first.");
 }
