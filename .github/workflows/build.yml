@@ -4,9 +4,8 @@
 # it is always the newest commit's. The links stay the same:
 #   https://github.com/kovarex/kovarex_go_editor/releases/latest/download/kovarex_go_editor.exe
 #   https://github.com/kovarex/kovarex_go_editor/releases/latest/download/kovarex_go_editor-linux-x64.tar.gz
-# A pull request gets a pre-release of its own, "pr-<number>", replaced on each
-# push to it and deleted when it is closed (pr-cleanup.yml), so it can be tried
-# before it is merged. A comment on the pull request links to it.
+# A pull request's builds are put up as a pre-release of their own by
+# pr-release.yml, once this has built them.
 name: Build
 
 on:
@@ -80,7 +79,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    # A pull request has its own pre-release instead (pr-release below).
+    # A pull request has its own pre-release instead (pr-release.yml).
     if: github.event_name != 'pull_request'
     needs: [windows, linux]
     runs-on: ubuntu-latest
@@ -106,66 +105,3 @@ jobs:
 
           **Windows:** kovarex_go_editor.exe -- download and run.
           **Linux (x64):** kovarex_go_editor-linux-x64.tar.gz -- \`tar -xzf kovarex_go_editor-linux-x64.tar.gz && ./kovarex_go_editor\`"
-
-  pr-release:
-    # Only for pull requests from this repository: one from a fork gets no
-    # token that could publish.
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-    needs: [windows, linux]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          merge-multiple: true
-      - name: Publish as "pr-<number>"
-        id: publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          NUMBER: ${{ github.event.pull_request.number }}
-          SHA: ${{ github.event.pull_request.head.sha }}
-          # Through the environment, not pasted into the script, where a quote
-          # in it would break the script.
-          TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          # Merged or closed while it was being built: pr-cleanup.yml has
-          # already been, and a release made now would stay behind.
-          if [ "$(gh api "repos/$GH_REPO/pulls/$NUMBER" --jq .state)" != open ]; then
-            echo "#$NUMBER is closed; nothing to publish."
-            exit 0
-          fi
-          tag="pr-$NUMBER"
-          gh release delete "$tag" --yes --cleanup-tag || true
-          gh release create "$tag" kovarex_go_editor.exe kovarex_go_editor-linux-x64.tar.gz \
-            --target "$SHA" --prerelease --latest=false \
-            --title "Pull request #$NUMBER: $TITLE" \
-            --notes "Built from ${SHA::7}, the newest commit of #$NUMBER. Deleted when the pull request is closed.
-
-          **Windows:** kovarex_go_editor.exe -- download and run.
-          **Linux (x64):** kovarex_go_editor-linux-x64.tar.gz -- \`tar -xzf kovarex_go_editor-linux-x64.tar.gz && ./kovarex_go_editor\`"
-          echo "published=true" >> "$GITHUB_OUTPUT"
-      - name: Link to it from the pull request
-        if: steps.publish.outputs.published == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          NUMBER: ${{ github.event.pull_request.number }}
-          SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          # One comment, found again by its first line and updated on each push.
-          marker="<!-- pr-release -->"
-          base="https://github.com/$GH_REPO/releases/download/pr-$NUMBER"
-          body="$marker
-          **Try this pull request** (built from ${SHA::7}):
-          - Windows: [kovarex_go_editor.exe]($base/kovarex_go_editor.exe)
-          - Linux (x64): [kovarex_go_editor-linux-x64.tar.gz]($base/kovarex_go_editor-linux-x64.tar.gz)"
-          id="$(gh api "repos/$GH_REPO/issues/$NUMBER/comments" --paginate \
-                  --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n 1)"
-          if [ -n "$id" ]; then
-            gh api -X PATCH "repos/$GH_REPO/issues/comments/$id" -f body="$body" > /dev/null
-          else
-            gh api -X POST "repos/$GH_REPO/issues/$NUMBER/comments" -f body="$body" > /dev/null
-          fi

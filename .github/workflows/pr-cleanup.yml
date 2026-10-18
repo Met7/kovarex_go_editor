@@ -1,14 +1,15 @@
 # A closed pull request -- merged or not -- takes its pre-release "pr-<number>"
-# (build.yml) and that release's tag with it.
+# (pr-release.yml) and that release's tag with it. pull_request_target, so that
+# one from a fork can too: it runs as this repository's, from master, and
+# never checks out the pull request's code.
 name: Pull request cleanup
 
 on:
-  pull_request:
+  pull_request_target:
     types: [closed]
 
 jobs:
   delete-release:
-    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -1,0 +1,95 @@
+# A pull request gets a pre-release of its own, "pr-<number>", with what
+# build.yml built from it, replaced on each push and deleted when the pull
+# request is closed (pr-cleanup.yml), so it can be tried before it is merged.
+# A comment on the pull request links to it.
+#
+# It runs after the build, as its own workflow, because a build of a pull
+# request from a fork gets a token that can't publish anything. This one runs
+# as this repository's, from master, and never runs the pull request's code:
+# it only takes the files the build made.
+name: Pull request release
+
+on:
+  workflow_run:
+    workflows: [Build]
+    types: [completed]
+
+jobs:
+  publish:
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Find the pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          # Through the environment, not pasted into the script, where a quote
+          # in them would break the script.
+          OWNER: ${{ github.event.workflow_run.head_repository.owner.login }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          # The run doesn't say which pull request it built when that comes
+          # from a fork, so it is looked up by its branch. Only an open one
+          # still at the commit that was built: one closed meanwhile has had
+          # its release cleaned up, and an older build mustn't replace a newer.
+          number="$(gh api -X GET "repos/$GH_REPO/pulls" -f state=open -f head="$OWNER:$BRANCH" \
+                      --jq ".[] | select(.head.sha == \"$SHA\") | .number" | head -n 1)"
+          if [ -z "$number" ]; then
+            echo "No open pull request is at ${SHA::7}; nothing to publish."
+            exit 0
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+      - name: Download the build
+        if: steps.pr.outputs.number
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN: ${{ github.event.workflow_run.id }}
+        run: gh run download "$RUN" -n windows -n linux -D build
+      - name: Publish as "pr-<number>"
+        if: steps.pr.outputs.number
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ steps.pr.outputs.number }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          title="$(gh api "repos/$GH_REPO/pulls/$NUMBER" --jq .title)"
+          tag="pr-$NUMBER"
+          gh release delete "$tag" --yes --cleanup-tag || true
+          # The tag goes on master: the commit built may only be in a fork.
+          gh release create "$tag" build/windows/kovarex_go_editor.exe build/linux/kovarex_go_editor-linux-x64.tar.gz \
+            --target "$(gh api "repos/$GH_REPO" --jq .default_branch)" --prerelease --latest=false \
+            --title "Pull request #$NUMBER: $title" \
+            --notes "Built from ${SHA::7}, the newest commit of #$NUMBER. Deleted when the pull request is closed.
+
+          **Windows:** kovarex_go_editor.exe -- download and run.
+          **Linux (x64):** kovarex_go_editor-linux-x64.tar.gz -- \`tar -xzf kovarex_go_editor-linux-x64.tar.gz && ./kovarex_go_editor\`"
+      - name: Link to it from the pull request
+        if: steps.pr.outputs.number
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ steps.pr.outputs.number }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          # One comment, found again by its first line and updated on each push.
+          marker="<!-- pr-release -->"
+          base="https://github.com/$GH_REPO/releases/download/pr-$NUMBER"
+          body="$marker
+          **Try this pull request** (built from ${SHA::7}):
+          - Windows: [kovarex_go_editor.exe]($base/kovarex_go_editor.exe)
+          - Linux (x64): [kovarex_go_editor-linux-x64.tar.gz]($base/kovarex_go_editor-linux-x64.tar.gz)"
+          id="$(gh api "repos/$GH_REPO/issues/$NUMBER/comments" --paginate \
+                  --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n 1)"
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GH_REPO/issues/comments/$id" -f body="$body" > /dev/null
+          else
+            gh api -X POST "repos/$GH_REPO/issues/$NUMBER/comments" -f body="$body" > /dev/null
+          fi
