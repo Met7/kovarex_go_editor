@@ -1,0 +1,21 @@
+# A closed pull request -- merged or not -- takes its pre-release "pr-<number>"
+# (build.yml) and that release's tag with it.
+name: Pull request cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  delete-release:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Delete "pr-<number>"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: gh release delete "pr-$NUMBER" --yes --cleanup-tag || true
