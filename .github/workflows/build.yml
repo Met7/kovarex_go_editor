@@ -121,6 +121,7 @@ jobs:
         with:
           merge-multiple: true
       - name: Publish as "pr-<number>"
+        id: publish
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -130,6 +131,12 @@ jobs:
           # in it would break the script.
           TITLE: ${{ github.event.pull_request.title }}
         run: |
+          # Merged or closed while it was being built: pr-cleanup.yml has
+          # already been, and a release made now would stay behind.
+          if [ "$(gh api "repos/$GH_REPO/pulls/$NUMBER" --jq .state)" != open ]; then
+            echo "#$NUMBER is closed; nothing to publish."
+            exit 0
+          fi
           tag="pr-$NUMBER"
           gh release delete "$tag" --yes --cleanup-tag || true
           gh release create "$tag" kovarex_go_editor.exe kovarex_go_editor-linux-x64.tar.gz \
@@ -139,7 +146,9 @@ jobs:
 
           **Windows:** kovarex_go_editor.exe -- download and run.
           **Linux (x64):** kovarex_go_editor-linux-x64.tar.gz -- \`tar -xzf kovarex_go_editor-linux-x64.tar.gz && ./kovarex_go_editor\`"
+          echo "published=true" >> "$GITHUB_OUTPUT"
       - name: Link to it from the pull request
+        if: steps.publish.outputs.published == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
