@@ -61,11 +61,13 @@ constexpr MouseAction MOUSE[] = {
   { "Clear a point", "With a mark tool: takes off whatever mark is there.", "Right-click", nullptr },
   { "Show tooltips at once", "Whatever the tooltip delay in Settings says.", "Hold Shift", nullptr },
 };
-// And in the game tree: picking out moves for the Variation group's edits.
+// And in the game tree: picking out moves for the Variation group's edits,
+// and moving them.
 constexpr MouseAction TREE[] = {
   { "Select moves", "From the current move to the one clicked, in place of what was selected before. Delete, Cut and Copy then act on just those.",
     "Shift + click a move", nullptr },
   { "Add to the selection", "The moves from the selection to the one clicked, additionally to what was selected before.", "Ctrl + click a move", nullptr },
+  { "Move a subtree", "Move a whole variation or selection.", "Drag a stone", nullptr },
 };
 
 }  // namespace

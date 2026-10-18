@@ -141,6 +141,7 @@ EditorView::EditorView(agui::Gui& gui, Theme& theme, const GoSprites& sprites)
   this->side << *this->comment;
 
   this->side << this->tree.widget();
+  this->tree.onMoved([this](const Outcome& outcome) { this->report(outcome); });
 
   // Long enough to say why an edit was refused, so it wraps.
   this->status = &agui::label("", &theme.dimLabel, agui::SingleLine::False);
