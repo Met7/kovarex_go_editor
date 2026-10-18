@@ -92,6 +92,19 @@ std::unique_ptr<sgf::Node> CloneSelected(const sgf::Node& node, const std::unord
   return copy;
 }
 
+// The number of the move `node` makes, or of the last one before it if it
+// makes none: counted as Apply() counts them.
+int MoveNumberAt(const sgf::Node& node)
+{
+  int number = 0;
+  for (const sgf::Node* n : Game::Path(node)) {
+    if (Game::MoveColor(*n) == Stone::None) continue;
+    const std::string& mn = n->get("MN");
+    number = mn.empty() ? number + 1 : std::atoi(mn.c_str());
+  }
+  return number;
+}
+
 }  // namespace
 
 const char* MarkProperty(Mark mark)
@@ -233,7 +246,7 @@ Position Game::positionBefore(const sgf::Node& node, int* number) const
   return position;
 }
 
-const sgf::Node* Game::firstConflict(const sgf::Node& node, const Position& before, int numberBefore, int* number) const
+std::vector<const sgf::Node*> Game::findStonesOnStones() const
 {
   // Straight down each line in place; a copy of the board only where the
   // record branches, for the variations to start from.
@@ -242,23 +255,88 @@ const sgf::Node* Game::firstConflict(const sgf::Node& node, const Position& befo
     Position         position;
     int              number;
   };
-  std::vector<Branch> todo{ { &node, before, numberBefore } };
+  std::vector<const sgf::Node*> found;
+  std::vector<Branch> todo{ { &this->root(), Position(this->w, this->h), 0 } };
   while (!todo.empty()) {
     Branch branch = std::move(todo.back());
     todo.pop_back();
 
     const sgf::Node* n = branch.node;
     while (true) {
-      if (!Apply(branch.position, *n, branch.number, this->w, this->h)) {
-        if (number) *number = branch.number;
-        return n;
-      }
+      if (!Apply(branch.position, *n, branch.number, this->w, this->h)) found.push_back(n);
       if (n->childCount() == 0) break;
       for (size_t k = n->childCount(); k-- > 1;) todo.push_back({ &n->child(k), branch.position, branch.number });
       n = &n->child(0);
     }
   }
-  return nullptr;
+  return found;
+}
+
+const std::unordered_set<const sgf::Node*>& Game::stonesOnStones() const
+{
+  if (this->onStonesRevision != this->treeChanges) {
+    const std::vector<const sgf::Node*> found = this->findStonesOnStones();
+    this->onStones         = { found.begin(), found.end() };
+    this->onStonesRevision = this->treeChanges;
+  }
+  return this->onStones;
+}
+
+std::optional<Game::StoneOnStone> Game::stoneOnStone(const sgf::Node& node) const
+{
+  if (!this->isStoneOnStone(node)) return std::nullopt;
+
+  // The board as the move finds it: after the node's own set-up, if it has
+  // any (FF[3] let a node have both).
+  Position  board = this->positionBefore(node);
+  sgf::Node setupOnly;
+  for (const char* id : { "AE", "AB", "AW" }) setupOnly.setValues(id, node.values(id));
+  int ignored = 0;
+  Apply(board, setupOnly, ignored, this->w, this->h);
+
+  StoneOnStone s;
+  s.number      = MoveNumberAt(node);
+  s.at          = this->movePoint(node);
+  s.color       = MoveColor(node);
+  s.under       = board.at(s.at);
+  s.underNode   = board.origin(s.at);
+  s.underIsMove = s.underNode && MoveColor(*s.underNode) != Stone::None;
+  s.underNumber = s.underIsMove ? board.moveNumberAt(s.at) : s.underNode ? MoveNumberAt(*s.underNode) : 0;
+  return s;
+}
+
+std::string Game::stoneOnStoneReason(const sgf::Node& node) const
+{
+  const std::optional<StoneOnStone> s = this->stoneOnStone(node);
+  if (!s) return {};
+
+  const std::string point = DisplayName(s->at, this->w, this->h);
+  std::string under;
+  if (s->underIsMove) {
+    under = "move " + std::to_string(s->underNumber) + " (" + ColorName(s->under) + " " + point + ")";
+  } else {
+    under = std::string("a ") + (s->under == Stone::Black ? "black" : "white") + " set-up stone (set up " +
+            (s->underNumber == 0 ? std::string("at the start") : "after move " + std::to_string(s->underNumber)) + ")";
+  }
+  return "Move " + std::to_string(s->number) + " (" + ColorName(s->color) + " " + point + ") is played on top of " +
+         under + ", which is still on the board.";
+}
+
+std::string Game::newStonesOnStones(const std::unordered_set<const sgf::Node*>& before) const
+{
+  // In the order they are met, so "the first" is the first along the record.
+  std::vector<const sgf::Node*> fresh;
+  for (const sgf::Node* n : this->findStonesOnStones()) {
+    if (!before.contains(n)) fresh.push_back(n);
+  }
+  if (fresh.empty()) return {};
+
+  const sgf::Node& first = *fresh.front();
+  const std::string move = "move " + std::to_string(MoveNumberAt(first)) + " (" + ColorName(MoveColor(first)) + " " +
+                           DisplayName(this->movePoint(first), this->w, this->h) + ")";
+  if (fresh.size() == 1) return "Now " + move + " lands on a stone: it's red in the game tree.";
+  return "Now " + std::to_string(fresh.size()) + " moves land on a stone, the first " + move +
+         ": they're red in the game tree.";
 }
 
 std::string Game::moveProblem(const Position& position, Point p, Stone color) const
@@ -402,12 +480,6 @@ void Game::beginEdit(bool structural)
   this->touched(structural);
 }
 
-void Game::rollback()
-{
-  this->restore(this->undoStack.back());
-  this->undoStack.pop_back();
-}
-
 void Game::restore(Snapshot& snapshot)
 {
   this->tree    = std::move(snapshot.tree);
@@ -502,6 +574,7 @@ Outcome Game::insertMove(Point p)
   const int numberBefore = this->moveNumber();
   if (std::string problem = this->moveProblem(before, p, color); !problem.empty()) return Outcome::Fail(problem);
 
+  const std::unordered_set<const sgf::Node*> onStonesBefore = this->stonesOnStones();
   this->beginEdit();
   // The new move takes over everything that came after this node -- every
   // variation, not just the main line, since they all follow on from here.
@@ -510,18 +583,11 @@ Outcome Game::insertMove(Point p)
   while (this->cursor->childCount() > 0) inserted->addChild(this->cursor->detachChild(0));
   sgf::Node& node = this->cursor->addChild(std::move(inserted));
 
-  int number = 0;
-  if (const sgf::Node* clash = this->firstConflict(node, before, numberBefore, &number)) {
-    const Point at = this->movePoint(*clash);
-    this->rollback();
-    return Outcome::Fail("Can't insert " + DisplayName(p, this->w, this->h) + ": move " + std::to_string(number) +
-                         " (" + ColorName(MoveColor(*clash)) + " " + DisplayName(at, this->w, this->h) +
-                         ") would then land on a stone.");
-  }
-
   this->goTo(node);
-  return Outcome::Done("Inserted " + std::string(ColorName(color)) + " " + DisplayName(p, this->w, this->h) +
-                       " as move " + std::to_string(numberBefore + 1) + "; the moves after it follow on.");
+  std::string what = "Inserted " + std::string(ColorName(color)) + " " + DisplayName(p, this->w, this->h) +
+                     " as move " + std::to_string(numberBefore + 1) + "; the moves after it follow on.";
+  if (std::string news = this->newStonesOnStones(onStonesBefore); !news.empty()) what += " " + news;
+  return Outcome::Done(what);
 }
 
 Outcome Game::moveStone(Point from, Point to)
@@ -535,8 +601,8 @@ Outcome Game::moveStone(Point from, Point to)
   // The record's own node: the position only hands out read-only pointers.
   sgf::Node& node = const_cast<sgf::Node&>(*origin);
 
-  int            numberBefore = 0;
-  const Position before       = this->positionBefore(node, &numberBefore);
+  const Position before = this->positionBefore(node);
+  const std::unordered_set<const sgf::Node*> onStonesBefore = this->stonesOnStones();
 
   const Stone color  = MoveColor(node);
   const bool  isMove = color != Stone::None && this->movePoint(node) == from;
@@ -574,15 +640,8 @@ Outcome Game::moveStone(Point from, Point to)
     what = "The set-up stone is now at " + target + ".";
   }
 
-  int number = 0;
-  if (const sgf::Node* clash = this->firstConflict(node, before, numberBefore, &number)) {
-    const Point at = this->movePoint(*clash);
-    const Stone by = MoveColor(*clash);
-    this->rollback();
-    return Outcome::Fail("Can't move it to " + target + ": move " + std::to_string(number) + " (" + ColorName(by) +
-                         " " + DisplayName(at, this->w, this->h) + ") would then land on a stone.");
-  }
   this->touched(true);
+  if (std::string news = this->newStonesOnStones(onStonesBefore); !news.empty()) what += " " + news;
   return Outcome::Done(what);
 }
 
@@ -698,17 +757,6 @@ Outcome Game::deleteSelection()
     }
   }
 
-  // What stays has to fit where it goes.
-  if (rest) {
-    int            numberBefore = 0;
-    const Position before       = this->positionBefore(*top, &numberBefore);
-    int            number       = 0;
-    if (const sgf::Node* clash = this->firstConflict(*rest, before, numberBefore, &number)) {
-      return Outcome::Fail("Can't delete those: move " + std::to_string(number) + " (" + ColorName(MoveColor(*clash)) + " " +
-                           DisplayName(this->movePoint(*clash), this->w, this->h) + ") would then land on a stone.");
-    }
-  }
-
   // The editor stays where it is if that stays, and goes to where the
   // selection started if not.
   const auto under = [](const sgf::Node* n, const sgf::Node* ancestor) {
@@ -719,6 +767,8 @@ Outcome Game::deleteSelection()
   };
   const bool cursorGoes = under(this->cursor, top) && !(rest && under(this->cursor, rest));
   const size_t count    = this->selected.size();
+  // What stays may then land on a stone: kept all the same, and said.
+  const std::unordered_set<const sgf::Node*> onStonesBefore = this->stonesOnStones();
 
   this->beginEdit();
   const size_t index = size_t(top->indexInParent());
@@ -730,7 +780,8 @@ Outcome Game::deleteSelection()
   this->touched(true);
 
   const std::string what = count == 1 ? "Deleted the selected move" : "Deleted the " + std::to_string(count) + " selected moves";
-  return Outcome::Done(what + (rest ? "; the moves after them follow on from where they started." : "."));
+  const std::string news = this->newStonesOnStones(onStonesBefore);
+  return Outcome::Done(what + (rest ? "; the moves after them follow on from where they started." : ".") + (news.empty() ? "" : " " + news));
 }
 
 // ---------------------------------------------------------------- turning the board
@@ -874,38 +925,28 @@ Outcome Game::pasteBranch(std::string_view text)
   }
   if (branches.empty()) return Outcome::Fail("There are no moves on the clipboard to paste.");
 
+  const std::unordered_set<const sgf::Node*> onStonesBefore = this->stonesOnStones();
   this->beginEdit();
-  std::vector<sgf::Node*> added;
-  for (std::unique_ptr<sgf::Node>& branch : branches) added.push_back(&this->cursor->addChild(std::move(branch)));
-
-  int             numberBefore = 0;
-  const Position  before       = this->positionBefore(*added.front(), &numberBefore);
-  for (const sgf::Node* node : added) {
-    int number = 0;
-    if (this->firstConflict(*node, before, numberBefore, &number)) {
-      this->rollback();
-      return Outcome::Fail("Those moves don't fit here: move " + std::to_string(number) + " would land on a stone.");
-    }
-  }
-
-  // Checked where they hang, they can now go where they belong: into the
-  // variations already here that they follow, as a move is never recorded
-  // twice under one parent. All of them come off first, so none is merged
-  // into another that is still to move.
-  std::vector<std::unique_ptr<sgf::Node>> checked;
-  for (sgf::Node* node : added) checked.push_back(this->cursor->detachChild(size_t(node->indexInParent())));
+  // They go where they belong: into the variations already here that they
+  // follow, as a move is never recorded twice under one parent. Moves that
+  // land on a stone are pasted all the same, as a file that has them opens:
+  // put right on the board rather than refused.
   bool merges = false;
-  for (const std::unique_ptr<sgf::Node>& branch : checked) {
+  for (const std::unique_ptr<sgf::Node>& branch : branches) {
     for (size_t k = 0; k < this->cursor->childCount(); ++k) merges = merges || this->sameNode(this->cursor->child(k), *branch);
   }
-  sgf::Node* first = &this->mergeChild(*this->cursor, std::move(checked.front()));
-  for (size_t i = 1; i < checked.size(); ++i) this->mergeChild(*this->cursor, std::move(checked[i]));
+  const size_t count = branches.size();
+  sgf::Node*   first = &this->mergeChild(*this->cursor, std::move(branches.front()));
+  for (size_t i = 1; i < count; ++i) this->mergeChild(*this->cursor, std::move(branches[i]));
 
   this->cursor = first;
   this->remember(*this->cursor);
   this->touched(true);
-  if (added.size() > 1) return Outcome::Done("Pasted " + std::to_string(added.size()) + " variations; this is the first.");
-  return Outcome::Done(merges ? "Merged into the variation that was already here." : "");
+  const std::string news  = this->newStonesOnStones(onStonesBefore);
+  const std::string after = news.empty() ? "" : " " + news;
+  if (count > 1) return Outcome::Done("Pasted " + std::to_string(count) + " variations; this is the first." + after);
+  if (merges) return Outcome::Done("Merged into the variation that was already here." + after);
+  return Outcome::Done(news.empty() ? std::string() : "Pasted as a new variation. " + news);
 }
 
 bool Game::sameNode(const sgf::Node& a, const sgf::Node& b) const
@@ -985,6 +1026,9 @@ Outcome Game::setupStone(Point p, Stone color)
   }
   if (!differs) return Outcome::Fail("That stone would have no liberty: it would be taken at once.");
 
+  // On a set-up node with moves after it, a stone added can be in a later
+  // move's way.
+  const std::unordered_set<const sgf::Node*> onStonesBefore = this->stonesOnStones();
   this->beginEdit();
   sgf::Node& node = this->setupNode();
   for (const char* id : { "AB", "AW", "AE" }) this->expandList(node, id);
@@ -1009,7 +1053,7 @@ Outcome Game::setupStone(Point p, Stone color)
     }
   }
   this->touched(true);
-  return Outcome::Done();
+  return Outcome::Done(this->newStonesOnStones(onStonesBefore));
 }
 
 void Game::toggleMark(Point p, Mark mark)

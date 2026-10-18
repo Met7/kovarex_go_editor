@@ -4,8 +4,9 @@
 //
 // The rules are the lenient ones SGF itself allows: a record may contain a
 // suicide (the group comes off the board) or a move onto an occupied point
-// (the stone replaces what was there). The editor refuses to *make* those --
-// see Game -- but a file that has them still opens.
+// (the stone replaces what was there). The editor refuses to *play* those --
+// see Game -- but a file that has them still opens, and an edit further back
+// can leave a later move on a stone, which Game lists for putting right.
 
 #pragma once
 

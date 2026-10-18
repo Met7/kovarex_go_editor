@@ -23,8 +23,11 @@
 //                 variation. Two of these put back an exchange that was left
 //                 out.
 //
-// Both check the whole of the record after the change, variations included,
-// and are refused if any later move would land on a stone.
+// Either can leave a later move landing on a stone that is now in its way.
+// That is not refused: a record may say it -- one copied down wrong often
+// does -- and the editor reads such files too. Those moves are listed by
+// stonesOnStones(), the edit's message says which it made, and moving the
+// stone on top (moveStone() again) is how one is put right.
 
 #pragma once
 
@@ -32,6 +35,7 @@
 #include <game/Sgf.hpp>
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -101,6 +105,27 @@ public:
   // The nodes from the root down to `node`, inclusive.
   static std::vector<const sgf::Node*> Path(const sgf::Node& node);
 
+  // Every move in the record, variations included, played onto a point that
+  // already has a stone. The stone it lands on is replaced. Worked out again
+  // whenever the tree changes.
+  const std::unordered_set<const sgf::Node*>& stonesOnStones() const;
+  bool isStoneOnStone(const sgf::Node& node) const { return this->stonesOnStones().contains(&node); }
+
+  // A move played on a stone, and the stone it lands on.
+  struct StoneOnStone {
+    int              number;       // the move's number
+    Point            at;
+    Stone            color;
+    Stone            under;        // the colour of the stone it lands on
+    const sgf::Node* underNode;    // the node that put that stone there: a move, or a set-up
+    int              underNumber;  // that move's number; for a set-up, the moves before it
+    bool             underIsMove;
+  };
+  // Nothing if the move at `node` lands on no stone.
+  std::optional<StoneOnStone> stoneOnStone(const sgf::Node& node) const;
+  // The same as the status line says it, or "".
+  std::string stoneOnStoneReason(const sgf::Node& node) const;
+
   // --- navigation: none of these changes the record ---
 
   bool forward();
@@ -165,10 +190,10 @@ public:
   // An SGF record hung on the current node as a new variation, and the
   // editor moved onto it. A whole game -- from a file, or another program --
   // keeps only what isn't about the game: its moves, and any set-up in its
-  // root. Refused if the board size differs or a move lands on a stone.
-  // Moves already recorded aren't added twice: where the record follows a
-  // variation that is already here, it is merged into it, and only what is
-  // new branches off.
+  // root. Refused if the board size differs; moves that land on a stone are
+  // kept, and said. Moves already recorded aren't added twice: where the
+  // record follows a variation that is already here, it is merged into it,
+  // and only what is new branches off.
   Outcome pasteBranch(std::string_view text);
 
   // --- the selection: moves picked out in the game tree, for edits on just
@@ -199,7 +224,8 @@ public:
   // of it selected goes with them. Where the selection stops part way along
   // a line, the moves after it are kept and hang on where the selection
   // started -- for the first such line, the main line before its
-  // variations; the others go.
+  // variations; the others go. If that puts a move on a stone, it is kept
+  // and said.
   Outcome deleteSelection();
 
   // Set-up stones. `color` None clears the point; a colour that is already
@@ -272,9 +298,6 @@ private:
   // Before every edit: saves what to undo to, and forgets what could be
   // redone. `structural` edits relayout the tree view.
   void beginEdit(bool structural = true);
-  // Puts back the state beginEdit() saved, for an edit that turned out to
-  // break the record.
-  void rollback();
   void restore(Snapshot& snapshot);
   void touched(bool structural);
 
@@ -284,11 +307,12 @@ private:
   // The position just before `node` is applied, and the move number there.
   Position positionBefore(const sgf::Node& node, int* number = nullptr) const;
 
-  // Plays out everything under `node` (inclusive) from `before`, and returns
-  // the first move that lands on a stone, or null if none does. `number` is
-  // that move's number.
-  const sgf::Node* firstConflict(const sgf::Node& node, const Position& before, int numberBefore,
-                                 int* number) const;
+  // Plays out the whole record and returns every move that lands on a stone:
+  // down each line, the main line before its variations.
+  std::vector<const sgf::Node*> findStonesOnStones() const;
+  // The moves that land on a stone now and did not in `before`, as a sentence
+  // for an edit's message, or "" if there are none.
+  std::string newStonesOnStones(const std::unordered_set<const sgf::Node*>& before) const;
 
   // Whether `a` and `b` are the same move -- or, neither being a move, say
   // exactly the same -- so one of them is all a parent needs.
@@ -343,4 +367,8 @@ private:
   mutable Position cached{ 19, 19 };
   mutable int      cachedNumber   = 0;
   mutable uint64_t cachedRevision = 0;
+
+  // stonesOnStones(), worked out again when treeRevision() has moved on.
+  mutable std::unordered_set<const sgf::Node*> onStones;
+  mutable uint64_t                             onStonesRevision = 0;
 };

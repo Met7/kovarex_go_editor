@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <optional>
 #include <string>
 
 namespace ui {
@@ -95,8 +96,8 @@ void TreeView::refresh()
     if (this->shownTree != 0) {
       this->canvas->clear();
       this->buttons.clear();
-      this->lit       = nullptr;
       this->litNode   = nullptr;
+      this->underNode = nullptr;
       this->shownTree = 0;
     }
     return;
@@ -113,21 +114,20 @@ void TreeView::refresh()
 
   if (this->shownRevision != this->game->revision()) {
     this->shownRevision = this->game->revision();
-    const auto    it  = this->buttons.find(&this->game->current());
-    agui::Button* now = it == this->buttons.end() ? nullptr : it->second;
-    if (now != this->lit) {
-      if (this->lit) {
-        this->lit->style.setParent(this->nodeStyle(*this->litNode, false));
-        CentreIcon(*this->lit);
-      }
-      if (now) {
-        now->style.setParent(this->nodeStyle(this->game->current(), true));
-        CentreIcon(*now);
-      }
-      this->lit     = now;
-      this->litNode = now ? &this->game->current() : nullptr;
+    // The current node lit, and if its move lands on a stone, the node that
+    // put that stone there in orange.
+    const sgf::Node* now = &this->game->current();
+    const std::optional<Game::StoneOnStone> onStone = this->game->stoneOnStone(*now);
+    const sgf::Node* under = onStone ? onStone->underNode : nullptr;
+    if (now != this->litNode || under != this->underNode) {
+      const sgf::Node* before[] = { this->litNode, this->underNode };
+      this->litNode   = now;
+      this->underNode = under;
+      for (const sgf::Node* n : { before[0], before[1], now, under }) this->restyle(n);
     }
-    if (now) this->pane.scrollToMakeWidgetVisible(now, ScrollMode::InView);
+    if (const auto it = this->buttons.find(now); it != this->buttons.end()) {
+      this->pane.scrollToMakeWidgetVisible(it->second, ScrollMode::InView);
+    }
     // A comment written or wiped here changes the node's mark, not the tree.
     const sgf::Node& current = this->game->current();
     if (current.get("C").empty() == this->commented.contains(&current)) {
@@ -138,10 +138,24 @@ void TreeView::refresh()
   }
 }
 
-agui::ButtonStyle* TreeView::nodeStyle(const sgf::Node& node, bool current) const
+agui::ButtonStyle* TreeView::nodeStyle(const sgf::Node& node) const
 {
+  const bool current = &node == this->litNode;
   if (this->game->isSelected(node)) return current ? &this->theme.treeNodeSelectedCurrent : &this->theme.treeNodeSelected;
-  return current ? &this->theme.treeNodeCurrent : &this->theme.treeNode;
+  if (this->game->isStoneOnStone(node)) return current ? &this->theme.treeNodeOnStoneCurrent : &this->theme.treeNodeOnStone;
+  if (current) return &this->theme.treeNodeCurrent;
+  return &node == this->underNode ? &this->theme.treeNodeUnder : &this->theme.treeNode;
+}
+
+void TreeView::restyle(const sgf::Node* node)
+{
+  if (!node) return;
+  const auto it = this->buttons.find(node);
+  if (it == this->buttons.end()) return;
+  agui::ButtonStyle* style = this->nodeStyle(*node);
+  if (it->second->style.getParent() == style) return;
+  it->second->style.setParent(style);
+  CentreIcon(*it->second);
 }
 
 void TreeView::clicked(sgf::Node& node)
@@ -191,8 +205,8 @@ void TreeView::rebuild()
   this->canvas->clear();
   this->buttons.clear();
   this->commented.clear();
-  this->lit     = nullptr;
-  this->litNode = nullptr;
+  this->litNode   = nullptr;
+  this->underNode = nullptr;
   this->placed.clear();
   this->nextFree.clear();
 
@@ -246,7 +260,7 @@ void TreeView::rebuild()
   }
 
   for (const Placed& p : this->placed) {
-    agui::Button& button = make<agui::Button>(this->nodeStyle(*p.node, false));
+    agui::Button& button = make<agui::Button>(this->nodeStyle(*p.node));
     button.setFocusable(false);
     Pin(button, button.style, NODE, NODE);
 

@@ -498,6 +498,9 @@ Theme::Theme(float scale)
     , treeNodeSelected(&this->treeNode)
     , treeNodeSelectedCurrent(&this->treeNode)
     , treeBranchButton(&agui::Button::defaultStyle)
+    , treeNodeOnStone(&this->treeNode)
+    , treeNodeOnStoneCurrent(&this->treeNode)
+    , treeNodeUnder(&this->treeNode)
     , treeNumberDark(&this->pointDark)
     , treeNumberLight(&this->pointLight)
     , toolButton(&agui::Button::defaultStyle)
@@ -1435,6 +1438,22 @@ void Theme::themeBoard()
   this->treeBranchButton.setPaddings(0, 0, 0, 0);
   this->treeBranchButton.setFont(&this->smallFont);
   this->treeBranchButton.setClickedVerticalOffset(0);
+  // A move on a stone: red_button's red, lighter under the cursor, and
+  // pressed in while it is the current node.
+  const agui::ElementImageSet onStone        = Set(this->composition(136, 17, 8));
+  const agui::ElementImageSet onStoneLit     = Set(this->composition(170, 17, 8));
+  const agui::ElementImageSet onStoneCurrent = Set(this->composition(187, 17, 8));
+  for (auto set : allSets) (this->treeNodeOnStone.*set)(&onStone);
+  this->treeNodeOnStone.setHoveredGraphicalSet(&onStoneLit);
+  this->treeNodeOnStone.setClickedGraphicalSet(&onStoneLit);
+  for (auto set : allSets) (this->treeNodeOnStoneCurrent.*set)(&onStoneCurrent);
+  // The stone it lands on: a deep orange, apart from the current node's and
+  // the cursor's -- the pale selected button, tinted.
+  const agui::ElementImageSet under    = Set(this->layer(Expand(352, 17, 8), { .tint = Rgb(255, 140, 30) }));
+  const agui::ElementImageSet underLit = Set(this->layer(Expand(352, 17, 8), { .tint = Rgb(255, 170, 70) }));
+  for (auto set : allSets) (this->treeNodeUnder.*set)(&under);
+  this->treeNodeUnder.setHoveredGraphicalSet(&underLit);
+  this->treeNodeUnder.setClickedGraphicalSet(&underLit);
 
   // The numbers on the tree's stones: the board's colours, at one size that
   // fits three digits on a stone.

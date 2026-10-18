@@ -408,6 +408,7 @@ void EditorView::show(Game* newGame)
   this->game          = newGame;
   this->shownRevision = 0;
   this->commentNode   = nullptr;
+  this->arrivedAt     = nullptr;
   this->evaluatedGame = nullptr;  // looked through afresh
   this->board.show(newGame);
   this->tree.show(newGame);
@@ -646,7 +647,22 @@ void EditorView::message(const std::string& text, bool good)
 {
   this->status->style.setParent(good ? &this->theme.goodLabel : &this->theme.badLabel);
   this->status->setText(text);
-  this->statusTime = STATUS_SECONDS;
+  this->statusTime    = STATUS_SECONDS;
+  this->showingReason = false;
+}
+
+void EditorView::explainCurrent()
+{
+  if (this->statusTime > 0.0f) return;  // another message is up: the reason waits for it to go
+  const std::string reason = this->game ? this->game->stoneOnStoneReason(this->game->current()) : std::string();
+  if (!reason.empty()) {
+    this->status->style.setParent(&this->theme.badLabel);
+    if (this->status->getText() != reason) this->status->setText(reason);
+    this->showingReason = true;
+  } else if (this->showingReason) {
+    this->status->setText(std::string());
+    this->showingReason = false;
+  }
 }
 
 bool EditorView::typing() const
@@ -666,7 +682,10 @@ void EditorView::update(float dt, int screenWidth, int screenHeight)
 {
   if (this->statusTime > 0.0f) {
     this->statusTime -= dt;
-    if (this->statusTime <= 0.0f) this->status->setText(std::string());
+    if (this->statusTime <= 0.0f) {
+      this->status->setText(std::string());
+      this->explainCurrent();  // back to why the current move lands on a stone, if it does
+    }
   }
 
   // The Text tool writes whatever the box says now.
@@ -709,6 +728,14 @@ void EditorView::refresh()
   const sgf::Node& root     = this->game->root();
   const sgf::Node& node     = this->game->current();
   const Position&  position = this->game->position();
+
+  // A move played on a stone already there: what it landed on, and how to
+  // put it right. The tree has it in red.
+  if (this->arrivedAt != &node) {
+    this->arrivedAt = &node;
+    if (this->game->isStoneOnStone(node)) this->statusTime = 0.0f;
+  }
+  this->explainCurrent();
 
   this->blackName->setText(Player(root, "PB", "BR", "Black"));
   this->whiteName->setText(Player(root, "PW", "WR", "White"));

@@ -1,0 +1,9 @@
+(;FF[4]GM[1]SZ[19]CA[UTF-8]AP[GoEditor:test]
+C[A record with moves played on stones that are still on the board, as one copied down wrong can have. It opens all the same, and the game tree shows those moves in red:
+- move 4, White D16, on Black's move 1;
+- move 6, White K10, on the white set-up stone;
+- move 6 in the variation, White Q16, on Black's move 5.]
+AW[jj]
+;B[dd];W[pp];B[dp];W[dd];B[pd]
+(;W[jj])
+(;W[pd]))

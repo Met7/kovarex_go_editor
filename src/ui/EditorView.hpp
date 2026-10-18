@@ -199,8 +199,16 @@ private:
   // What the panel last showed, so it only changes what has changed.
   uint64_t         shownRevision = 0;
   const sgf::Node* commentNode   = nullptr;
+  // The node last arrived at: arriving on a move played on a stone puts its
+  // reason up at once, over whatever the status line had.
+  const sgf::Node* arrivedAt     = nullptr;
 
-  float statusTime = 0.0f;  // seconds the status line has left
+  // The status line says why the current move lands on a stone, for as long
+  // as it is the current move: no time runs out on that.
+  void explainCurrent();
+
+  float statusTime    = 0.0f;   // seconds the status line has left
+  bool  showingReason = false;  // it is explainCurrent()'s
 };
 
 }  // namespace ui
