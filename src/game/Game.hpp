@@ -165,6 +165,9 @@ public:
   // editor moved onto it. A whole game -- from a file, or another program --
   // keeps only what isn't about the game: its moves, and any set-up in its
   // root. Refused if the board size differs or a move lands on a stone.
+  // Moves already recorded aren't added twice: where the record follows a
+  // variation that is already here, it is merged into it, and only what is
+  // new branches off.
   Outcome pasteBranch(std::string_view text);
 
   // Set-up stones. `color` None clears the point; a colour that is already
@@ -254,6 +257,14 @@ private:
   // that move's number.
   const sgf::Node* firstConflict(const sgf::Node& node, const Position& before, int numberBefore,
                                  int* number) const;
+
+  // Whether `a` and `b` are the same move -- or, neither being a move, say
+  // exactly the same -- so one of them is all a parent needs.
+  bool sameNode(const sgf::Node& a, const sgf::Node& b) const;
+  // Hangs `node` under `parent`, or, when `parent` already has the same one,
+  // merges it into that: the properties it lacks, the comment if it says
+  // something else, and the children, the same way. Returns where it went.
+  sgf::Node& mergeChild(sgf::Node& parent, std::unique_ptr<sgf::Node> node);
 
   // Why a move by `color` at `p` could not be played on `position`, or "".
   std::string moveProblem(const Position& position, Point p, Stone color) const;

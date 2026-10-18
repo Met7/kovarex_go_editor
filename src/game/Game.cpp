@@ -747,11 +747,59 @@ Outcome Game::pasteBranch(std::string_view text)
     }
   }
 
-  this->cursor = added.front();
+  // Checked where they hang, they can now go where they belong: into the
+  // variations already here that they follow, as a move is never recorded
+  // twice under one parent. All of them come off first, so none is merged
+  // into another that is still to move.
+  std::vector<std::unique_ptr<sgf::Node>> checked;
+  for (sgf::Node* node : added) checked.push_back(this->cursor->detachChild(size_t(node->indexInParent())));
+  bool merges = false;
+  for (const std::unique_ptr<sgf::Node>& branch : checked) {
+    for (size_t k = 0; k < this->cursor->childCount(); ++k) merges = merges || this->sameNode(this->cursor->child(k), *branch);
+  }
+  sgf::Node* first = &this->mergeChild(*this->cursor, std::move(checked.front()));
+  for (size_t i = 1; i < checked.size(); ++i) this->mergeChild(*this->cursor, std::move(checked[i]));
+
+  this->cursor = first;
   this->remember(*this->cursor);
   this->touched(true);
-  return Outcome::Done(added.size() == 1 ? std::string()
-                                         : "Pasted " + std::to_string(added.size()) + " variations; this is the first.");
+  if (added.size() > 1) return Outcome::Done("Pasted " + std::to_string(added.size()) + " variations; this is the first.");
+  return Outcome::Done(merges ? "Merged into the variation that was already here." : "");
+}
+
+bool Game::sameNode(const sgf::Node& a, const sgf::Node& b) const
+{
+  const Stone color = MoveColor(a);
+  if (color != MoveColor(b)) return false;
+  if (color == Stone::None) {
+    const std::vector<sgf::Property>& pa = a.properties();
+    const std::vector<sgf::Property>& pb = b.properties();
+    return pa.size() == pb.size() && std::equal(pa.begin(), pa.end(), pb.begin(), [](const sgf::Property& x, const sgf::Property& y) {
+             return x.id == y.id && x.values == y.values;
+           });
+  }
+  return this->isPass(a) == this->isPass(b) && this->movePoint(a) == this->movePoint(b);
+}
+
+sgf::Node& Game::mergeChild(sgf::Node& parent, std::unique_ptr<sgf::Node> node)
+{
+  sgf::Node* same = nullptr;
+  for (size_t k = 0; k < parent.childCount() && !same; ++k) {
+    if (this->sameNode(parent.child(k), *node)) same = &parent.child(k);
+  }
+  if (!same) return parent.addChild(std::move(node));
+
+  for (const sgf::Property& property : node->properties()) {
+    if (!same->has(property.id)) {
+      same->setValues(property.id, property.values);
+    } else if (property.id == "C") {
+      const std::string& mine   = same->get("C");
+      const std::string& theirs = property.values.empty() ? std::string() : property.values.front();
+      if (!theirs.empty() && mine.find(theirs) == std::string::npos) same->set("C", mine + "\n\n" + theirs);
+    }
+  }
+  while (node->childCount() > 0) this->mergeChild(*same, node->detachChild(0));
+  return *same;
 }
 
 // ---------------------------------------------------------------- set-up and marks
