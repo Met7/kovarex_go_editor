@@ -4,6 +4,7 @@
 #include <ui/GoSprites.hpp>
 #include <ui/Theme.hpp>
 
+#include <Agui/Font.hpp>
 #include <Agui/Gui.hpp>
 #include <Agui/SystemClipboard.hpp>
 #include <Agui/Widget/Button.hpp>
@@ -408,6 +409,7 @@ void EditorView::show(Game* newGame)
   this->game          = newGame;
   this->shownRevision = 0;
   this->commentNode   = nullptr;
+  this->arrivedAt     = nullptr;
   this->evaluatedGame = nullptr;  // looked through afresh
   this->board.show(newGame);
   this->tree.show(newGame);
@@ -646,7 +648,22 @@ void EditorView::message(const std::string& text, bool good)
 {
   this->status->style.setParent(good ? &this->theme.goodLabel : &this->theme.badLabel);
   this->status->setText(text);
-  this->statusTime = STATUS_SECONDS;
+  this->statusTime    = STATUS_SECONDS;
+  this->showingReason = false;
+}
+
+void EditorView::explainCurrent()
+{
+  if (this->statusTime > 0.0f) return;  // another message is up: the reason waits for it to go
+  const std::string reason = this->game ? this->game->stoneOnStoneReason(this->game->current()) : std::string();
+  if (!reason.empty()) {
+    this->status->style.setParent(&this->theme.badLabel);
+    if (this->status->getText() != reason) this->status->setText(reason);
+    this->showingReason = true;
+  } else if (this->showingReason) {
+    this->status->setText(std::string());
+    this->showingReason = false;
+  }
 }
 
 bool EditorView::typing() const
@@ -666,7 +683,10 @@ void EditorView::update(float dt, int screenWidth, int screenHeight)
 {
   if (this->statusTime > 0.0f) {
     this->statusTime -= dt;
-    if (this->statusTime <= 0.0f) this->status->setText(std::string());
+    if (this->statusTime <= 0.0f) {
+      this->status->setText(std::string());
+      this->explainCurrent();  // back to why the current move lands on a stone, if it does
+    }
   }
 
   // The Text tool writes whatever the box says now.
@@ -709,6 +729,14 @@ void EditorView::refresh()
   const sgf::Node& root     = this->game->root();
   const sgf::Node& node     = this->game->current();
   const Position&  position = this->game->position();
+
+  // A move played on a stone already there: what it landed on, and how to
+  // put it right. The tree has it in red.
+  if (this->arrivedAt != &node) {
+    this->arrivedAt = &node;
+    if (this->game->isStoneOnStone(node)) this->statusTime = 0.0f;
+  }
+  this->explainCurrent();
 
   this->blackName->setText(Player(root, "PB", "BR", "Black"));
   this->whiteName->setText(Player(root, "PW", "WR", "White"));
@@ -755,12 +783,18 @@ void EditorView::layout(int screenWidth, int screenHeight)
   }
 
   // The comment and the tree share what the rest of the panel leaves,
-  // measured off the last layout rather than guessed at.
+  // measured off the last layout rather than guessed at. The status line
+  // has room for two lines kept for it, said or not, so a message coming and
+  // going doesn't move the comment or the tree; a longer one takes what it
+  // needs more off the tree's bottom only.
+  const agui::Font* statusFont = this->status->style.getFont();
+  const int statusH = 2 * (statusFont ? statusFont->getLineHeight() : 0) + this->status->getVerticalPaddings();
+  const int statusOver = std::max(0, this->status->getHeight() - statusH);
   const int inner  = sideW - this->side.getHorizontalPaddings();
-  const int chrome = this->side.getVerticalPaddings() + this->upper->getHeight() + this->status->getHeight() + 3 * 4 + 8;
+  const int chrome = this->side.getVerticalPaddings() + this->upper->getHeight() + statusH + 3 * 4 + 8;
   const int room   = std::max(MIN_COMMENT_H + MIN_TREE_H, sideH - chrome);
   const int commentH = std::clamp(room / 4, MIN_COMMENT_H, MAX_COMMENT_H);
-  const int treeH    = std::max(MIN_TREE_H, room - commentH);
+  const int treeH    = std::max(MIN_TREE_H, room - commentH - statusOver);
   if (this->comment->getWidth() != inner || this->comment->getHeight() != commentH) {
     Pin(*this->comment, this->comment->style, inner, commentH);
   }

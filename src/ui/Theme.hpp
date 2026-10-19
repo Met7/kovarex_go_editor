@@ -73,7 +73,10 @@ public:
   agui::LabelStyle       pointLightSmall;
   agui::LabelStyle       coordinate;   // the letters and numbers round the edge
 
-  // The game tree: a button per node, the current one lit up.
+  // The game tree: a button per node, the current one lit up. A move played
+  // on a stone already there is red, lit or not; while it is the current
+  // node, every move or set-up under it on that point is deep orange, even
+  // those that are red themselves.
   agui::ButtonStyle treeNode;
   agui::ButtonStyle treeNodeCurrent;
   // Selected moves: blue, darker on the current one.
@@ -82,6 +85,9 @@ public:
   // The small + and - where a branch leaves the selection: takes it in, or
   // leaves it out again.
   agui::ButtonStyle treeBranchButton;
+  agui::ButtonStyle treeNodeOnStone;
+  agui::ButtonStyle treeNodeOnStoneCurrent;
+  agui::ButtonStyle treeNodeUnder;
   // A move's number on its stone in the tree: dark on white, light on black.
   agui::LabelStyle  treeNumberDark;
   agui::LabelStyle  treeNumberLight;

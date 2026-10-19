@@ -261,17 +261,19 @@ SUITE(Selection)
     CHECK_EQUAL(outcome.message, "The start of the game can't be deleted.");
   }
 
-  TEST(TheMovesAfterHaveToFit)
+  TEST(TheMovesAfterMayLandOnAStone)
   {
     // White takes B[aa] with W[ab], and Black plays B[aa] again. Without W[ab]
-    // the corner stone would still be there: that can't be deleted.
+    // the corner stone is still there: deleted all the same, and B[aa] is red.
     Game game = Record("(;SZ[19];B[aa];W[ba];B[pp];W[ab];B[aa])");
     game.goToPath({ 0, 0, 0, 0 });
     game.selectRange(game.current());
     const Outcome outcome = game.deleteSelection();
-    CHECK(!outcome.ok);
-    CHECK_EQUAL(outcome.message, "Can't delete those: move 4 (Black A19) would then land on a stone.");
-    CHECK(!game.modified());
+    CHECK(outcome.ok);
+    CHECK_EQUAL(outcome.message, "Deleted the selected move; the moves after them follow on from where they started. "
+                                 "Now move 4 (Black A19) lands on a stone: it's red in the game tree.");
+    CHECK_EQUAL(Moves(game), ";B[aa];W[ba];B[pp];B[aa]");
+    CHECK(game.isStoneOnStone(At(game, { 0, 0, 0, 0 })));
   }
 
   // ------------------------------------------------------------ in the editor
