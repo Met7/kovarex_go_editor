@@ -4,6 +4,7 @@
 #include <ui/Input.hpp>
 #include <ui/Theme.hpp>
 
+#include <Agui/Gui.hpp>
 #include <Agui/Widget/ImageWidget.hpp>
 #include <Agui/Widget/Label.hpp>
 
@@ -167,6 +168,8 @@ void TreeView::restyle(const sgf::Node* node)
 
 void TreeView::clicked(sgf::Node& node)
 {
+  // Let go of where it started, a drag isn't a click.
+  if (this->dragFrom) return;
   // Shift: the moves from the current one to this, in place of what was
   // selected; Ctrl: those from the selection to this, added to it. Neither
   // goes anywhere. A plain click lets go of the selection and goes there.
@@ -178,6 +181,50 @@ void TreeView::clicked(sgf::Node& node)
     if (!this->game->selection().empty()) this->game->clearSelection();
     this->game->goTo(node);
   }
+}
+
+void TreeView::dragged(sgf::Node& node, agui::Point onScreen)
+{
+  if (!this->dragIcon) {
+    this->dragFrom = &node;
+    const Stone color = Game::MoveColor(node);
+    this->dragIcon    = &make<agui::ImageWidget>(this->sprites.image(color == Stone::Black   ? Sprite::BlackStone
+                                                                    : color == Stone::White ? Sprite::WhiteStone
+                                                                                            : Sprite::TreeSetup));
+    this->dragIcon->scaleToKeepTheRatio = true;
+    this->dragIcon->opacity             = 0.6;
+    this->dragIcon->setIgnoredByInteraction(true);
+    Pin(*this->dragIcon, this->dragIcon->style, this->stonePx(), this->stonePx());
+    // Over everything, not on the canvas: that ends at the last node, and it
+    // would be cut off past it.
+    agui::Gui::instance->add(this->dragIcon);
+  }
+  this->dragIcon->setLocation(onScreen.x - this->stonePx() / 2, onScreen.y - this->stonePx() / 2);
+}
+
+void TreeView::dropped(agui::Point at)
+{
+  if (!this->dragFrom) return;
+  sgf::Node& from = *this->dragFrom;
+  agui::Gui::instance->remove(this->dragIcon);
+  this->dragIcon = nullptr;
+  this->dragFrom = nullptr;
+
+  sgf::Node* target = this->nodeAt(at);
+  if (!target || target == &from) return;
+  const Outcome outcome = this->game->isSelected(from) ? this->game->moveSelection(*target) : this->game->moveBranch(from, *target);
+  if (this->moved) this->moved(outcome);
+}
+
+sgf::Node* TreeView::nodeAt(agui::Point at) const
+{
+  for (const auto& [node, button] : this->buttons) {
+    const agui::Point corner = button->getLocation();
+    if (at.x >= corner.x && at.x < corner.x + button->getWidth() && at.y >= corner.y && at.y < corner.y + button->getHeight()) {
+      return const_cast<sgf::Node*>(node);
+    }
+  }
+  return nullptr;
 }
 
 void TreeView::placeLine(sgf::Node* start, int column, int minRow)
@@ -212,6 +259,10 @@ void TreeView::rebuild()
   this->canvas->clear();
   this->buttons.clear();
   this->commented.clear();
+  // A drag still going is for nodes that may be gone.
+  if (this->dragIcon) agui::Gui::instance->remove(this->dragIcon);
+  this->dragFrom = nullptr;
+  this->dragIcon = nullptr;
   this->litNode   = nullptr;
   this->underNodes.clear();
   this->placed.clear();
@@ -314,6 +365,15 @@ void TreeView::rebuild()
 
     sgf::Node* node = p.node;
     button.onClick(this, [this, node] { this->clicked(*node); });
+    // Dragged, it goes where it is dropped: a little way first, so a click
+    // that wobbles is still a click. And a click is when it is let go, so a
+    // press that starts a drag doesn't go anywhere.
+    button.setRequireMinimumDragDistance();
+    button.disableFireClickOnMouseDown();
+    button.onMouseDrag(this, [this, node, &button](const agui::MouseEvent& event) {
+      if (event.getButton() == agui::MouseButton::LEFT) this->dragged(*node, button.getAbsolutePosition() + event.getPosition());
+    });
+    button.onMouseUp(this, [this, &button](const agui::MouseEvent& event) { this->dropped(button.getLocation() + event.getPosition()); });
     const int offset = (PITCH - NODE) / 2;
     button.setLocation(PAD + p.column * PITCH + offset, PAD + p.row * PITCH + offset);
     *this->canvas << button;

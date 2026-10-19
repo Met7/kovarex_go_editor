@@ -1,7 +1,9 @@
 // The game tree: every node of the record as a small button, moves left to
 // right, the main line along the top and each variation branching down off
 // the move it varies from. Click a node to go there; Shift or Ctrl and click
-// to select moves, for the Variation group's edits to act on instead.
+// to select moves, for the Variation group's edits to act on instead. Drag a
+// node onto another to move it there with everything after it -- or, if it is
+// selected, the selection.
 //
 // Built from widgets like the rest -- a button per node, and the lines
 // between them as stretched pictures -- on a canvas in a scroll pane. It is
@@ -19,6 +21,7 @@
 #include <Agui/Widget/ScrollPane.hpp>
 
 #include <cstdint>
+#include <functional>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -49,6 +52,9 @@ public:
   // black stone, black on a white one. The nodes are bigger then, for three
   // digits to fit.
   void setNumbers(bool on);
+
+  // What a drag and drop in the tree did, or why it didn't.
+  void onMoved(std::function<void(const Outcome&)> callback) { this->moved = std::move(callback); }
 
   // The button standing for `node`, or null if it has none (yet).
   agui::Button* nodeButton(const sgf::Node& node) const
@@ -83,6 +89,13 @@ private:
   void restyle(const sgf::Node* node);
   // A node clicked: Shift or Ctrl selects up to it, a plain click goes there.
   void clicked(sgf::Node& node);
+  // A node's button dragged, and let go of: the icon follows the mouse, at
+  // `onScreen`; the drop, at `at` on the canvas, moves the node -- or the
+  // selection it is in -- onto the node it is dropped on.
+  void dragged(sgf::Node& node, agui::Point onScreen);
+  void dropped(agui::Point at);
+  // The node whose button is at `at` on the canvas, or null.
+  sgf::Node* nodeAt(agui::Point at) const;
 
   Theme&           theme;
   const GoSprites& sprites;
@@ -97,6 +110,10 @@ private:
   std::unordered_map<const sgf::Node*, agui::Button*> buttons;
   // The nodes drawn with a comment's mark: drawn again when that changes.
   std::unordered_set<const sgf::Node*> commented;
+  // The node being dragged, and the icon that goes along with the mouse.
+  sgf::Node*         dragFrom = nullptr;
+  agui::ImageWidget* dragIcon = nullptr;
+  std::function<void(const Outcome&)> moved;
   const sgf::Node*                              litNode   = nullptr;  // the current node, drawn lit
   std::vector<const sgf::Node*>                 underNodes;           // drawn deep orange
 

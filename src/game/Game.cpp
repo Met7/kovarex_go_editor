@@ -744,6 +744,42 @@ std::string Game::copySelection() const
   return sgf::Write(copy);
 }
 
+sgf::Node* Game::selectionRest(const sgf::Node& top) const
+{
+  // Where the selection stops part way along a line -- a selected move whose
+  // one next move isn't -- the moves after it stay. Of several such lines,
+  // the first: down the main line before the variations.
+  std::vector<const sgf::Node*> todo{ &top };
+  while (!todo.empty()) {
+    const sgf::Node* n = todo.back();
+    todo.pop_back();
+    if (n->childCount() == 1 && !this->isSelected(n->child(0))) return const_cast<sgf::Node*>(&n->child(0));
+    for (size_t k = n->childCount(); k-- > 0;) {
+      if (this->isSelected(n->child(k))) todo.push_back(&n->child(k));
+    }
+  }
+  return nullptr;
+}
+
+std::vector<std::vector<int>> Game::selectionPaths() const
+{
+  std::vector<std::vector<int>> paths;
+  for (const sgf::Node* n : this->selected) {
+    std::vector<int> path;
+    for (; n->parent(); n = n->parent()) path.push_back(n->indexInParent());
+    std::reverse(path.begin(), path.end());
+    paths.push_back(std::move(path));
+  }
+  return paths;
+}
+
+void Game::reselect(const std::vector<std::vector<int>>& paths)
+{
+  this->selected.clear();
+  for (const std::vector<int>& path : paths) this->selected.insert(this->nodeAt(path));
+  ++this->selectionChanges;
+}
+
 Outcome Game::deleteSelection()
 {
   const sgf::Node* top = this->selectionTop();
@@ -751,19 +787,7 @@ Outcome Game::deleteSelection()
   sgf::Node* parent = top->parent();
   if (!parent) return Outcome::Fail("The start of the game can't be deleted.");
 
-  // Where the selection stops part way along a line -- a selected move whose
-  // one next move isn't -- the moves after it stay. Of several such lines,
-  // the first: down the main line before the variations.
-  sgf::Node* rest = nullptr;
-  std::vector<const sgf::Node*> todo{ top };
-  while (!todo.empty() && !rest) {
-    const sgf::Node* n = todo.back();
-    todo.pop_back();
-    if (n->childCount() == 1 && !this->isSelected(n->child(0))) rest = &n->child(0);
-    for (size_t k = n->childCount(); k-- > 0;) {
-      if (this->isSelected(n->child(k))) todo.push_back(&n->child(k));
-    }
-  }
+  sgf::Node* rest = this->selectionRest(*top);
 
   // The editor stays where it is if that stays, and goes to where the
   // selection started if not.
@@ -790,6 +814,60 @@ Outcome Game::deleteSelection()
   const std::string what = count == 1 ? "Deleted the selected move" : "Deleted the " + std::to_string(count) + " selected moves";
   const std::string news = this->newStonesOnStones(onStonesBefore);
   return Outcome::Done(what + (rest ? "; the moves after them follow on from where they started." : ".") + (news.empty() ? "" : " " + news));
+}
+
+Outcome Game::moveSelection(sgf::Node& target)
+{
+  const sgf::Node* top = this->selectionTop();
+  if (!top) return Outcome::Fail("Nothing is selected: Shift or Ctrl and click the game tree to select moves.");
+  if (!top->parent()) return Outcome::Fail("The start of the game can't be moved.");
+  if (this->isSelected(target)) return Outcome::Fail("Drop them on a move that is not in the selection.");
+  if (top->parent() == &target) return Outcome::Fail("They already follow on from that move.");
+  // Below the selection, only the moves that deleting it keeps stay to drop on.
+  const auto under = [](const sgf::Node* n, const sgf::Node* ancestor) {
+    for (; n; n = n->parent()) {
+      if (n == ancestor) return true;
+    }
+    return false;
+  };
+  const sgf::Node* rest = this->selectionRest(*top);
+  if (under(&target, top) && !(rest && under(&target, rest))) return Outcome::Fail("That move goes with them: drop them somewhere else.");
+
+  // Moves that land on a stone where they go are moved all the same, and said.
+  const std::unordered_set<const sgf::Node*> onStonesBefore = this->stonesOnStones();
+  const std::string                          moved          = this->copySelection();
+  const size_t                               count          = this->selected.size();
+  const Outcome                              taken          = this->deleteSelection();
+  if (!taken.ok) return taken;
+  std::vector<const sgf::Node*> there;  // to tell whether they merged into one of these
+  for (size_t k = 0; k < target.childCount(); ++k) there.push_back(&target.child(k));
+  this->cursor      = &target;
+  const Outcome put = this->pasteBranch(moved);
+  if (!put.ok) {
+    // Nothing a copy makes is refused, but if it were: the cut goes back too.
+    this->undo();
+    this->redoStack.pop_back();
+    return put;
+  }
+  // One edit to undo: the tree as it was before the cut, not between the two.
+  this->undoStack.pop_back();
+
+  const bool        merged = std::find(there.begin(), there.end(), this->cursor) != there.end();
+  const std::string what   = count == 1 ? "Moved the move" : "Moved the " + std::to_string(count) + " moves";
+  const std::string news   = this->newStonesOnStones(onStonesBefore);
+  return Outcome::Done(what +
+                       (!merged ? "." : count == 1 ? "; it merged into the same move already there." : "; they merged into the moves already there.") +
+                       (news.empty() ? "" : " " + news));
+}
+
+Outcome Game::moveBranch(const sgf::Node& start, sgf::Node& target)
+{
+  const std::vector<std::vector<int>> paths = this->selectionPaths();
+  this->selected.clear();
+  this->selectBranch(start, true);
+  const Outcome outcome = this->moveSelection(target);
+  if (!outcome.ok) this->reselect(paths);
+  return outcome;
 }
 
 // ---------------------------------------------------------------- turning the board

@@ -231,6 +231,13 @@ public:
   // and said.
   Outcome deleteSelection();
 
+  // Dragged in the game tree and dropped on `target`: the selected moves cut
+  // and pasted onto it, as one edit. The editor goes to the first of them.
+  // A move that then lands on a stone is kept, and said.
+  Outcome moveSelection(sgf::Node& target);
+  // The same for `start` and everything after it.
+  Outcome moveBranch(const sgf::Node& start, sgf::Node& target);
+
   // Set-up stones. `color` None clears the point; a colour that is already
   // there takes it away again. Set-up never shares a node with a move, so
   // after a move this starts a new node for it.
@@ -360,6 +367,13 @@ private:
   std::unordered_set<const sgf::Node*> selected;
   uint64_t                             selectionChanges = 0;
   const sgf::Node*                     selectionTop() const;
+  // Where the selection stops part way along a line below `top`: the first
+  // move after it, which deleting it keeps.
+  sgf::Node* selectionRest(const sgf::Node& top) const;
+  // The selection as paths from the root, to pick it again in a tree put
+  // back from the undo history.
+  std::vector<std::vector<int>> selectionPaths() const;
+  void                          reselect(const std::vector<std::vector<int>>& paths);
 
   // The text property last typed into, so a burst of typing is one undo step.
   const sgf::Node* textNode = nullptr;
