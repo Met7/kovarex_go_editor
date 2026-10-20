@@ -200,8 +200,9 @@ void LineLayer::paintComponent(const agui::PaintEvent& paintEvent, const agui::P
 {
   const agui::Color solid(0.95f, 0.35f, 0.15f, 0.9f);
   const agui::Color faint(0.95f, 0.35f, 0.15f, 0.45f);
+  const agui::Color blue(60 / 255.0f, 110 / 255.0f, 230 / 255.0f, 0.9f);
   for (const Line& line : this->lines) {
-    const agui::Color& ink = line.preview ? faint : solid;
+    const agui::Color& ink = line.box ? blue : line.preview ? faint : solid;
     if (line.from == line.to) {
       // No line yet: a small cross where it will start.
       const int arm = int(this->thickness * 2.5f);
@@ -669,6 +670,16 @@ void BoardView::refresh()
     const Point to = this->hover.valid() ? this->hover : this->lineStart;
     drawn.push_back({ centre(this->lineStart), centre(to), this->tool == Tool::Arrow, true });
   }
+  // The box a Shift-drag draws: round the points it takes in, in the blue
+  // the game tree selects in.
+  if (this->boxing) {
+    const int left = this->margin + std::min(this->boxFrom.x, this->boxTo.x) * this->pitch;
+    const int top  = this->margin + std::min(this->boxFrom.y, this->boxTo.y) * this->pitch;
+    const int right  = this->margin + (std::max(this->boxFrom.x, this->boxTo.x) + 1) * this->pitch;
+    const int bottom = this->margin + (std::max(this->boxFrom.y, this->boxTo.y) + 1) * this->pitch;
+    const agui::Point corners[] = { { left, top }, { right, top }, { right, bottom }, { left, bottom } };
+    for (int i = 0; i < 4; ++i) drawn.push_back({ corners[i], corners[(i + 1) % 4], false, false, true });
+  }
   this->lineLayer->setLines(std::move(drawn), std::max(2.0f, float(this->pitch) / 12.0f));
 }
 
@@ -705,14 +716,34 @@ void BoardView::pressed(Point p, const agui::MouseEvent& event)
     return;
   }
   if (button != agui::MouseButton::LEFT) return;
-  // A mark tool paints: the first point decides whether the drag puts the
-  // mark on or takes it off, and every point it crosses gets the same.
-  if (const std::optional<Mark> mark = ToolMark(this->tool); mark && this->game) {
-    this->painting   = true;
-    this->paintOn    = !this->game->hasMark(p, *mark);
-    this->paintedOn  = p;
+  // Ctrl and Shift: a box to clear, with the tools that only clear one.
+  const bool labelTool = this->tool == Tool::Letter || this->tool == Tool::Number || this->tool == Tool::Text;
+  if (event.shift() && event.control() && (labelTool || this->tool == Tool::Setup) && this->game) {
     this->pressPoint = p;
-    this->game->setMark(p, *mark, this->paintOn, false);
+    this->boxing     = true;
+    this->boxOn      = false;
+    this->boxFrom = this->boxTo = p;
+    this->dirty      = true;
+    return;
+  }
+  // A mark tool paints: the first point decides whether the drag puts the
+  // mark on or takes it off -- Ctrl, that it takes it off -- and every point
+  // it crosses gets the same. With Shift, it draws a box instead, for all of
+  // the points in it at once.
+  if (const std::optional<Mark> mark = ToolMark(this->tool); mark && this->game) {
+    this->pressPoint = p;
+    this->painted    = false;
+    if (event.shift()) {
+      this->boxing  = true;
+      this->boxOn   = !event.control();
+      this->boxFrom = this->boxTo = p;
+      this->dirty   = true;
+      return;
+    }
+    this->painting  = true;
+    this->paintOn   = !event.control() && !this->game->hasMark(p, *mark);
+    this->paintedOn = p;
+    this->paintMark(p);
     return;
   }
   this->pressPoint = p;
@@ -724,6 +755,15 @@ void BoardView::dragged(Point p, const agui::MouseEvent& event)
 {
   if (this->drawingWith != agui::MouseButton::NONE) {
     if (p == this->drawingOn) this->drawTo(this->boardAt(p, event));
+    return;
+  }
+  if (this->boxing) {
+    // Off the board, the box stays as it was last.
+    const Point target = this->pointAt(p, event);
+    if (target.valid() && target != this->boxTo) {
+      this->boxTo = target;
+      this->dirty = true;
+    }
     return;
   }
   if (this->painting) {
@@ -738,7 +778,7 @@ void BoardView::dragged(Point p, const agui::MouseEvent& event)
       for (int i = 1; i <= steps; ++i) {
         const Point q{ from.x + int(std::lround(double(target.x - from.x) * i / steps)),
                        from.y + int(std::lround(double(target.y - from.y) * i / steps)) };
-        this->game->setMark(q, *mark, this->paintOn, true);
+        this->paintMark(q);
       }
       this->paintedOn = target;
     }
@@ -776,6 +816,13 @@ void BoardView::released(Point p, const agui::MouseEvent& event)
     return;
   }
 
+  if (this->boxing && event.getButton() == agui::MouseButton::LEFT) {
+    this->boxing     = false;
+    this->pressPoint = {};
+    this->dirty      = true;
+    this->applyBox();
+    return;
+  }
   if (this->painting && event.getButton() == agui::MouseButton::LEFT) {
     this->painting   = false;
     this->pressPoint = {};
@@ -881,6 +928,42 @@ void BoardView::rightClick(Point p)
     if (lb.rfind(v + ":", 0) == 0) {
       this->game->toggleLabel(p, lb.substr(3));
       break;
+    }
+  }
+}
+
+void BoardView::paintMark(Point p)
+{
+  const std::optional<Mark> mark = ToolMark(this->tool);
+  if (!mark || this->game->hasMark(p, *mark) == this->paintOn) return;
+  this->game->setMark(p, *mark, this->paintOn, this->painted);
+  this->painted = true;
+}
+
+void BoardView::applyBox()
+{
+  if (this->tool == Tool::Setup) {
+    if (const Outcome outcome = this->game->clearSetupStones(this->boxFrom, this->boxTo); !outcome.ok || !outcome.message.empty()) {
+      this->report(outcome);
+    }
+    return;
+  }
+  if (this->tool == Tool::Letter || this->tool == Tool::Number || this->tool == Tool::Text) {
+    this->game->clearLabels(this->boxFrom, this->boxTo);
+    return;
+  }
+  const std::optional<Mark> mark = ToolMark(this->tool);
+  if (!mark) return;
+  // Marks go on stones, and territory on the points between them; off, they
+  // come off every point in the box.
+  const bool     territory = mark == Mark::TerritoryBlack || mark == Mark::TerritoryWhite;
+  const Position position  = this->game->position();  // a copy: each mark is an edit
+  this->paintOn = this->boxOn;
+  for (int y = std::min(this->boxFrom.y, this->boxTo.y); y <= std::max(this->boxFrom.y, this->boxTo.y); ++y) {
+    for (int x = std::min(this->boxFrom.x, this->boxTo.x); x <= std::max(this->boxFrom.x, this->boxTo.x); ++x) {
+      const Point p{ x, y };
+      if (this->boxOn && (position.at(p) == Stone::None) != territory) continue;
+      this->paintMark(p);
     }
   }
 }

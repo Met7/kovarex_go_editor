@@ -94,6 +94,9 @@ const std::vector<Control>& AllControls()
 {
   using S = ControlSection;
   constexpr const char* WHOLE_BRANCH = "This move and everything after it.";
+  constexpr const char* MARK         = "A drag marks every point it crosses, Ctrl + drag takes the mark off. Shift + drag marks every stone in a box; Ctrl + Shift + drag clears a box.";
+  constexpr const char* TERRITORY    = "A drag marks every point it crosses, Ctrl + drag takes the mark off. Shift + drag marks every empty point in a box; Ctrl + Shift + drag clears a box.";
+  constexpr const char* LABEL        = "Ctrl + Shift + drag clears the labels in a box.";
   static const std::vector<Control> controls = {
     { "back",               Command::Back,              "Back one move",         "The mouse wheel does it too.", S::Moving, true,  Key(KEY_LEFT) },
     { "forward",            Command::Forward,           "Forward one move",      "The mouse wheel does it too.", S::Moving, true,  Key(KEY_RIGHT) },
@@ -118,19 +121,19 @@ const std::vector<Control>& AllControls()
     { "flip-vertical",   Command::FlipVertical,   "Flip vertically", "The whole game, every move and mark in it.", S::Editing, false, NONE },
 
     { "tool-play",            ToolCommand(Tool::Play),           "Play moves",          nullptr, S::Tools, false, Key(KEY_Q) },
-    { "tool-setup",           ToolCommand(Tool::Setup),          "Set-up stones",       "Stones, not moves: black, or white with Shift.", S::Tools, false, Key(KEY_B) },
+    { "tool-setup",           ToolCommand(Tool::Setup),          "Set-up stones",       "Stones, not moves: black, or white with Shift. Ctrl + Shift + drag clears the set-up stones in a box.", S::Tools, false, Key(KEY_B) },
     { "tool-erase",           ToolCommand(Tool::Erase),          "Clear set-up stones", nullptr, S::Tools, false, Key(KEY_E) },
-    { "tool-territory-black", ToolCommand(Tool::TerritoryBlack), "Black's territory",   nullptr, S::Tools, false, NONE },
-    { "tool-territory-white", ToolCommand(Tool::TerritoryWhite), "White's territory",   nullptr, S::Tools, false, NONE },
-    { "tool-triangle",        ToolCommand(Tool::Triangle),       "Triangle",            nullptr, S::Tools, false, Key(KEY_T) },
-    { "tool-square",          ToolCommand(Tool::Square),         "Square",              nullptr, S::Tools, false, Key(KEY_S) },
-    { "tool-circle",          ToolCommand(Tool::Circle),         "Circle",              nullptr, S::Tools, false, Key(KEY_C) },
-    { "tool-cross",           ToolCommand(Tool::Cross),          "Cross",               nullptr, S::Tools, false, Key(KEY_X) },
-    { "tool-selected",        ToolCommand(Tool::Selected),       "Selected points",     nullptr, S::Tools, false, NONE },
+    { "tool-territory-black", ToolCommand(Tool::TerritoryBlack), "Black's territory",   TERRITORY, S::Tools, false, NONE },
+    { "tool-territory-white", ToolCommand(Tool::TerritoryWhite), "White's territory",   TERRITORY, S::Tools, false, NONE },
+    { "tool-triangle",        ToolCommand(Tool::Triangle),       "Triangle",            MARK, S::Tools, false, Key(KEY_T) },
+    { "tool-square",          ToolCommand(Tool::Square),         "Square",              MARK, S::Tools, false, Key(KEY_S) },
+    { "tool-circle",          ToolCommand(Tool::Circle),         "Circle",              MARK, S::Tools, false, Key(KEY_C) },
+    { "tool-cross",           ToolCommand(Tool::Cross),          "Cross",               MARK, S::Tools, false, Key(KEY_X) },
+    { "tool-selected",        ToolCommand(Tool::Selected),       "Selected points",     MARK, S::Tools, false, NONE },
     { "tool-pen",             ToolCommand(Tool::Pen),            "Pen",                 "Draws on the board, to show something. The middle mouse button, or Alt with the left one, draws with any tool.", S::Tools, false, Key(KEY_P) },
-    { "tool-letter",          ToolCommand(Tool::Letter),         "Letters",             nullptr, S::Tools, false, Key(KEY_L) },
-    { "tool-number",          ToolCommand(Tool::Number),         "Numbers",             nullptr, S::Tools, false, Key(KEY_N) },
-    { "tool-text",            ToolCommand(Tool::Text),           "Text",                nullptr, S::Tools, false, NONE },
+    { "tool-letter",          ToolCommand(Tool::Letter),         "Letters",             LABEL, S::Tools, false, Key(KEY_L) },
+    { "tool-number",          ToolCommand(Tool::Number),         "Numbers",             LABEL, S::Tools, false, Key(KEY_N) },
+    { "tool-text",            ToolCommand(Tool::Text),           "Text",                LABEL, S::Tools, false, NONE },
     { "tool-arrow",           ToolCommand(Tool::Arrow),          "Arrow",               nullptr, S::Tools, false, Key(KEY_A) },
     { "tool-line",            ToolCommand(Tool::Line),           "Line",                nullptr, S::Tools, false, NONE },
 

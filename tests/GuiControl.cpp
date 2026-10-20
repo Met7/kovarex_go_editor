@@ -38,6 +38,18 @@ void GuiControl::click(agui::Widget* widget, agui::MouseButton button, Modifiers
   this->updateMe();
 }
 
+void GuiControl::drag(agui::Widget* from, agui::Widget* to, Modifiers modifiers, std::source_location location)
+{
+  CHECK_SOURCELOCATION(from, location);
+  CHECK_SOURCELOCATION(to, location);
+  this->setModifiers(modifiers, true);
+  this->mouseDown(from, agui::MouseButton::LEFT, location);
+  this->moveTo(to, location);
+  this->buttonsUp();
+  this->setModifiers(modifiers, false);
+  this->updateMe();
+}
+
 void GuiControl::doubleClick(agui::Widget* widget, std::source_location location)
 {
   this->click(widget, agui::MouseButton::LEFT, NoModifiers, location);
