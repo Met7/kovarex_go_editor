@@ -1116,6 +1116,36 @@ Outcome Game::setupStone(Point p, Stone color)
   // move's way.
   const std::unordered_set<const sgf::Node*> onStonesBefore = this->stonesOnStones();
   this->beginEdit();
+  this->writeSetup(now, after);
+  this->touched(true);
+  return Outcome::Done(this->newStonesOnStones(onStonesBefore));
+}
+
+Outcome Game::clearSetupStones(Point a, Point b)
+{
+  // A set-up stone is one whose node is no move: the start's, or a set-up's.
+  const Position now   = this->position();  // a copy: the edit changes the position
+  Position       after = now;
+  int            count = 0;
+  for (int y = std::max(0, std::min(a.y, b.y)); y <= std::min(now.height() - 1, std::max(a.y, b.y)); ++y) {
+    for (int x = std::max(0, std::min(a.x, b.x)); x <= std::min(now.width() - 1, std::max(a.x, b.x)); ++x) {
+      const Point q{ x, y };
+      if (now.at(q) == Stone::None || !now.origin(q) || MoveColor(*now.origin(q)) != Stone::None) continue;
+      after.set(q, Stone::None);
+      ++count;
+    }
+  }
+  if (count == 0) return Outcome::Fail("There are no set-up stones in the box.");
+
+  const std::unordered_set<const sgf::Node*> onStonesBefore = this->stonesOnStones();
+  this->beginEdit();
+  this->writeSetup(now, after);
+  this->touched(true);
+  return Outcome::Done(this->newStonesOnStones(onStonesBefore));
+}
+
+void Game::writeSetup(const Position& now, const Position& after)
+{
   sgf::Node& node = this->setupNode();
   for (const char* id : { "AB", "AW", "AE" }) this->expandList(node, id);
 
@@ -1138,8 +1168,6 @@ Outcome Game::setupStone(Point p, Stone color)
       }
     }
   }
-  this->touched(true);
-  return Outcome::Done(this->newStonesOnStones(onStonesBefore));
 }
 
 void Game::toggleMark(Point p, Mark mark)
@@ -1207,6 +1235,21 @@ void Game::toggleLabel(Point p, const std::string& text)
     }
   }
   node.setValues("LB", std::move(labels));
+  this->touched(false);
+}
+
+void Game::clearLabels(Point a, Point b)
+{
+  const auto inBox = [a, b](const std::string& label) {
+    const std::optional<Point> p = label.size() >= 2 ? FromSgf(label.substr(0, 2)) : std::nullopt;
+    return p && p->x >= std::min(a.x, b.x) && p->x <= std::max(a.x, b.x) && p->y >= std::min(a.y, b.y) && p->y <= std::max(a.y, b.y);
+  };
+  std::vector<std::string> labels = this->cursor->values("LB");
+  if (std::none_of(labels.begin(), labels.end(), inBox)) return;
+  this->beginEdit(false);
+  std::erase_if(labels, inBox);
+  if (labels.empty()) this->cursor->remove("LB");
+  else                this->cursor->setValues("LB", std::move(labels));
   this->touched(false);
 }
 

@@ -40,6 +40,9 @@ public:
   void click(agui::Widget* widget, agui::MouseButton button = agui::MouseButton::LEFT, Modifiers modifiers = NoModifiers,
              std::source_location location = std::source_location::current());
   void doubleClick(agui::Widget* widget, std::source_location location = std::source_location::current());
+  // Pressed on `from`, with `modifiers` held, moved to `to` and let go there.
+  void drag(agui::Widget* from, agui::Widget* to, Modifiers modifiers = NoModifiers,
+            std::source_location location = std::source_location::current());
   template <class T>
   void clickSelect(std::function<bool(T*)> widgetSelector = nullptr, agui::MouseButton button = agui::MouseButton::LEFT,
                    std::source_location location = std::source_location::current())

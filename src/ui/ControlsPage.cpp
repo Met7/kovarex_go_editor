@@ -59,6 +59,10 @@ constexpr MouseAction MOUSE[] = {
     "Alt + drag", "Middle-drag" },
   { "Back and forward through the game", nullptr, "Mouse wheel", nullptr },
   { "Clear a point", "With a mark tool: takes off whatever mark is there.", "Right-click", nullptr },
+  { "Marks/territory in an area", "With a mark tool, every stone in the box gets the mark; with a territory tool, every empty point.",
+    "Shift + drag", nullptr },
+  { "Clear marks in an area", "With a mark or territory tool: that mark off every point in the box. With a label tool, every label; "
+    "with the set-up tool, every set-up stone.", "Ctrl + Shift + drag", nullptr },
   { "Show tooltips at once", "Whatever the tooltip delay in Settings says.", "Hold Shift", nullptr },
 };
 // And in the game tree: picking out moves for the Variation group's edits,

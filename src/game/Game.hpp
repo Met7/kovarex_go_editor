@@ -242,6 +242,9 @@ public:
   // there takes it away again. Set-up never shares a node with a move, so
   // after a move this starts a new node for it.
   Outcome setupStone(Point p, Stone color);
+  // Every set-up stone in the box from `a` to `b` taken off, as one edit --
+  // those of the start and of any set-up since; the moves' stones stay.
+  Outcome clearSetupStones(Point a, Point b);
 
   // A mark on the current node: on if it was not there, off if it was. A point
   // carries one shape (or label) at a time.
@@ -252,6 +255,8 @@ public:
   void setMark(Point p, Mark mark, bool on, bool sameEdit);
   // A label, LB[p:text]. The same text again takes it off.
   void toggleLabel(Point p, const std::string& text);
+  // Every label in the box from `a` to `b` taken off, as one edit.
+  void clearLabels(Point a, Point b);
   // The label the letter and number tools would put down next.
   std::string nextLetter() const;
   std::string nextNumber() const;
@@ -313,6 +318,9 @@ private:
 
   // The node a set-up or mark edit goes in.
   sgf::Node& setupNode();
+  // Writes into the set-up node what makes `now` into `after`: the stones
+  // put down, and those taken off.
+  void writeSetup(const Position& now, const Position& after);
 
   // The position just before `node` is applied, and the move number there.
   Position positionBefore(const sgf::Node& node, int* number = nullptr) const;

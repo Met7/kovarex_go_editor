@@ -93,6 +93,7 @@ public:
     agui::Point from, to;
     bool        arrow;
     bool        preview = false;  // the one being drawn: see-through
+    bool        box     = false;  // a side of a Shift-drag's box: the game tree's selection blue
   };
   LineLayer();
   void setLines(std::vector<Line> lines, float thickness);
@@ -208,6 +209,10 @@ private:
   // Whether a line is being drawn on the board just now.
   bool drawing() const { return this->drawingWith != agui::MouseButton::NONE; }
   void rightClick(Point p);
+  // The tool's mark put on `p`, or taken off, as `paintOn` says, in the same
+  // edit as the rest of the drag; and the box let go of, done.
+  void paintMark(Point p);
+  void applyBox();
   // The point under the mouse, from an event on the point it was pressed on:
   // everything after the press goes to that point, wherever the mouse is.
   Point pointAt(Point pressedOn, const agui::MouseEvent& event) const;
@@ -252,10 +257,20 @@ private:
   bool  dragging = false;
   Point lineStart;   // the first click of an arrow or a line
   // A mark tool dragged across the board: putting the mark on (or taking it
-  // off, by the first point), and the last point done.
+  // off, by the first point, or with Ctrl), and the last point done.
   bool  painting = false;
   bool  paintOn  = false;
   Point paintedOn;
+  bool  painted  = false;  // whether the drag changed anything yet: its first change starts the edit
+  // A mark tool dragged with Shift: a box from one corner to the other, whose
+  // stones -- or, for territory, empty points -- get the mark when it is let
+  // go; with Ctrl too, every point in it loses it. With Ctrl and Shift, the
+  // label tools take the labels off the box, and the set-up one its set-up
+  // stones; neither puts anything on a box.
+  bool  boxing = false;
+  bool  boxOn  = true;
+  Point boxFrom;
+  Point boxTo;
 
   uint64_t shownRevision = 0;
   bool     dirty         = true;
