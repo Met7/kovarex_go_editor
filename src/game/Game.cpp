@@ -1135,7 +1135,7 @@ Outcome Game::clearSetupStones(Point a, Point b)
       ++count;
     }
   }
-  if (count == 0) return Outcome::Fail("There are no set-up stones in the box.");
+  if (count == 0) return Outcome::Fail("There are no set-up stones to clear.");
 
   const std::unordered_set<const sgf::Node*> onStonesBefore = this->stonesOnStones();
   this->beginEdit();

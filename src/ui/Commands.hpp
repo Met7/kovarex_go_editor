@@ -7,7 +7,8 @@
 // What a click on the board does.
 enum class Tool {
   Play,            // moves, each side in turn
-  Setup,           // set-up stones: black, or white with Shift
+  SetupBlack,      // set-up stones: black, or white with Shift
+  SetupWhite,      // set-up stones: white, or black with Shift
   Erase,           // clears set-up stones
   Triangle,
   Square,
@@ -53,6 +54,8 @@ enum class Command {
   RotateRight,
   FlipHorizontal,
   FlipVertical,
+  // Every set-up stone in the position taken off.
+  ClearSetup,
 
   // Files and pages.
   NewGame,
@@ -83,6 +86,11 @@ enum class Command {
   ToolFirst,
   ToolLast = ToolFirst + int(Tool::Count) - 1,
 };
+
+constexpr bool IsSetup(Tool tool)
+{
+  return tool == Tool::SetupBlack || tool == Tool::SetupWhite;
+}
 
 constexpr Command ToolCommand(Tool tool)
 {

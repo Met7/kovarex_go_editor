@@ -27,6 +27,12 @@ constexpr double HINT    = 0.35;  // where the variations from here go
 constexpr double DIMMED  = 0.45;  // DD: a stone the diagram wants in the background
 constexpr double LIFTED  = 0.3;   // a stone being dragged away from its point
 
+// The colour a set-up tool puts down: its own, or the other with Shift.
+Stone SetupColor(Tool tool, bool shift)
+{
+  return (tool == Tool::SetupWhite) != shift ? Stone::White : Stone::Black;
+}
+
 int FloorDiv(int a, int b)
 {
   return a >= 0 ? a / b : -((-a + b - 1) / b);
@@ -591,7 +597,7 @@ void BoardView::refresh()
              position.at(this->hover) == Stone::None) {
     std::optional<Stone> preview;
     if (this->tool == Tool::Play)  preview = this->game->toPlay();
-    if (this->tool == Tool::Setup) preview = this->shiftHeld ? Stone::White : Stone::Black;
+    if (IsSetup(this->tool)) preview = SetupColor(this->tool, this->shiftHeld);
     if (preview) {
       ghosts[at(this->hover)]       = preview;
       ghostOpacity[at(this->hover)] = GHOST;
@@ -718,7 +724,7 @@ void BoardView::pressed(Point p, const agui::MouseEvent& event)
   if (button != agui::MouseButton::LEFT) return;
   // Ctrl and Shift: a box to clear, with the tools that only clear one.
   const bool labelTool = this->tool == Tool::Letter || this->tool == Tool::Number || this->tool == Tool::Text;
-  if (event.shift() && event.control() && (labelTool || this->tool == Tool::Setup) && this->game) {
+  if (event.shift() && event.control() && (labelTool || IsSetup(this->tool)) && this->game) {
     this->pressPoint = p;
     this->boxing     = true;
     this->boxOn      = false;
@@ -786,7 +792,7 @@ void BoardView::dragged(Point p, const agui::MouseEvent& event)
   }
   if (!this->game || this->pressPoint != p) return;
   // Only stones move, and only with the tools that put stones down.
-  const bool stoneTool = this->tool == Tool::Play || this->tool == Tool::Setup;
+  const bool stoneTool = this->tool == Tool::Play || IsSetup(this->tool);
   if (!stoneTool || this->game->position().at(p) == Stone::None) return;
 
   const Point target = this->pointAt(p, event);
@@ -864,7 +870,8 @@ void BoardView::click(Point p, bool ctrl, bool shift)
       this->report(this->game->play(p));
     }
     return;
-  case Tool::Setup: this->report(this->game->setupStone(p, shift ? Stone::White : Stone::Black)); return;
+  case Tool::SetupBlack:
+  case Tool::SetupWhite: this->report(this->game->setupStone(p, SetupColor(this->tool, shift))); return;
   case Tool::Erase: this->report(this->game->setupStone(p, Stone::None)); return;
 
   case Tool::Letter:
@@ -908,7 +915,7 @@ void BoardView::click(Point p, bool ctrl, bool shift)
 
 void BoardView::rightClick(Point p)
 {
-  if (this->tool == Tool::Play || this->tool == Tool::Setup) {
+  if (this->tool == Tool::Play || IsSetup(this->tool)) {
     // To the move that played this stone.
     if (this->game->goToStone(p) && Game::MoveColor(this->game->current()) == Stone::None) {
       this->report(Outcome::Done("That stone was set up here, not played."));
@@ -942,7 +949,7 @@ void BoardView::paintMark(Point p)
 
 void BoardView::applyBox()
 {
-  if (this->tool == Tool::Setup) {
+  if (IsSetup(this->tool)) {
     if (const Outcome outcome = this->game->clearSetupStones(this->boxFrom, this->boxTo); !outcome.ok || !outcome.message.empty()) {
       this->report(outcome);
     }

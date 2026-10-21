@@ -39,6 +39,9 @@ constexpr int MAX_COMMENT_H = 120;
 // The info mark after a name with a tooltip: Factorio's size for it.
 constexpr int INFO_W = 8;
 constexpr int INFO_H = 20;
+// The Stones group's buttons with words on them.
+constexpr int CLEAR_W     = 48;
+constexpr int CLEAR_ALL_W = 68;
 
 struct ToolLook {
   Tool                  tool;
@@ -49,9 +52,10 @@ struct ToolLook {
 
 // The tools, and how their buttons look.
 constexpr ToolLook TOOLS[] = {
-  { Tool::Play,           Sprite::BlackStone,     "",    "Play moves\nCtrl+click inserts a move after this one; drag a stone to move it, however long ago it was played." },
-  { Tool::Setup,          std::nullopt,           "",    "Set up stones: a click adds a black one, Shift+click a white one. A click on a stone of that colour takes it off. Ctrl+Shift+drag clears the set-up stones in a box." },
-  { Tool::Erase,          std::nullopt,           "Clr", "Clear set-up stones" },
+  { Tool::Play,           std::nullopt,           "",    "Play moves\nCtrl+click inserts a move after this one; drag a stone to move it, however long ago it was played." },
+  { Tool::SetupBlack,     Sprite::BlackStone,     "",    "Set up black stones\nShift+click sets up a white one. A click on a stone of that colour takes it off. Ctrl+Shift+drag clears the set-up stones in a box." },
+  { Tool::SetupWhite,     Sprite::WhiteStone,     "",    "Set up white stones\nShift+click sets up a black one. A click on a stone of that colour takes it off. Ctrl+Shift+drag clears the set-up stones in a box." },
+  { Tool::Erase,          std::nullopt,           "Clear", "Clear set-up stones" },
   { Tool::Triangle,       Sprite::TriangleDark,   "",    "Triangle\nShift+drag marks every stone in a box; with Ctrl, drags take marks off." },
   { Tool::Square,         Sprite::SquareDark,     "",    "Square\nShift+drag marks every stone in a box; with Ctrl, drags take marks off." },
   { Tool::Circle,         Sprite::CircleDark,     "",    "Circle\nShift+drag marks every stone in a box; with Ctrl, drags take marks off." },
@@ -251,7 +255,7 @@ agui::Button& EditorView::toolButton(Tool which)
     agui::ImageWidget& icon = Icon(this->sprites, *look.icon, ICON);
     button << icon;
     this->icons.push_back({ &button, &icon, at, at });
-  } else if (which == Tool::Setup) {
+  } else if (which == Tool::Play) {
     // Both colours, one after the other, the pair centred together.
     constexpr int STONE = 16, STEP = 8;
     const int     from  = (TOOL_PX - STONE - STEP) / 2;
@@ -261,7 +265,20 @@ agui::Button& EditorView::toolButton(Tool which)
     this->icons.push_back({ &button, &black, from, from });
     this->icons.push_back({ &button, &white, from + STEP, from + STEP });
   }
+  // A word is wider than a picture.
+  if (look.text[0] && look.text[1] && look.text[2]) Pin(button, button.style, CLEAR_W, TOOL_PX);
   this->toolButtons[size_t(which)] = &button;
+  return button;
+}
+
+agui::Button& EditorView::clearAllButton()
+{
+  // A command, but as tall as the tools beside it.
+  agui::Button& button = agui::button(std::string("Clear all"), &this->side, [this] { this->pending.push_back(Command::ClearSetup); },
+                                      &this->theme.toolButton);
+  button.setFocusable(false);
+  this->tipped.push_back({ &button, Command::ClearSetup, "Clear all set-up stones in this position." });
+  Pin(button, button.style, CLEAR_ALL_W, TOOL_PX);
   return button;
 }
 
@@ -293,7 +310,8 @@ agui::Widget& EditorView::buildTools()
   agui::VerticalFlow& rows = column(4);
 
   agui::HorizontalFlow& stones = row(4);
-  for (Tool t : { Tool::Play, Tool::Setup, Tool::Erase }) stones << this->toolButton(t);
+  for (Tool t : { Tool::Play, Tool::SetupBlack, Tool::SetupWhite, Tool::Erase }) stones << this->toolButton(t);
+  stones << this->clearAllButton();
   agui::HorizontalFlow& territory = row(4);
   for (Tool t : { Tool::TerritoryBlack, Tool::TerritoryWhite }) territory << this->toolButton(t);
   agui::HorizontalFlow& top = row(4);
@@ -591,6 +609,11 @@ void EditorView::run(Command command)
   case Command::RotateRight:     this->report(this->game->transform(BoardTransform::RotateRight)); break;
   case Command::FlipHorizontal:  this->report(this->game->transform(BoardTransform::FlipHorizontal)); break;
   case Command::FlipVertical:    this->report(this->game->transform(BoardTransform::FlipVertical)); break;
+  case Command::ClearSetup: {
+    const Position& position = this->game->position();
+    this->report(this->game->clearSetupStones({ 0, 0 }, { position.width() - 1, position.height() - 1 }));
+    break;
+  }
   case Command::Undo:
     if (!this->game->undo()) this->message("Nothing to undo.", false);
     break;

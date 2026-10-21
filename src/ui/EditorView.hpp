@@ -119,6 +119,8 @@ private:
   agui::Button& iconButton(Sprite sprite, Command command, const char* tip);
   // The button that picks `which` tool, as TOOLS describes it.
   agui::Button& toolButton(Tool which);
+  // The Stones group's Clear all, which is no tool.
+  agui::Button& clearAllButton();
   // A bordered frame round a group of buttons, as the settings page has, with
   // the group's name at its top.
   agui::Frame& group(const char* caption);

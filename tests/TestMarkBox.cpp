@@ -102,7 +102,7 @@ SUITE(MarkBox)
 
   TEST(CtrlShiftDragClearsTheSetUpStonesInTheBox)
   {
-    Scenario s(Tool::Setup);
+    Scenario s(Tool::SetupBlack);
     s.scenario.clickPoint(1, 1);
     s.scenario.clickPoint(2, 1);
     s.scenario.clickPoint(7, 7);

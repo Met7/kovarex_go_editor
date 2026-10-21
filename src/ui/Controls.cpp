@@ -121,8 +121,10 @@ const std::vector<Control>& AllControls()
     { "flip-vertical",   Command::FlipVertical,   "Flip vertically", "The whole game, every move and mark in it.", S::Editing, false, NONE },
 
     { "tool-play",            ToolCommand(Tool::Play),           "Play moves",          nullptr, S::Tools, false, Key(KEY_Q) },
-    { "tool-setup",           ToolCommand(Tool::Setup),          "Set-up stones",       "Stones, not moves: black, or white with Shift. Ctrl + Shift + drag clears the set-up stones in a box.", S::Tools, false, Key(KEY_B) },
+    { "tool-setup",           ToolCommand(Tool::SetupBlack),     "Black set-up stones", "Stones, not moves: black, or white with Shift. Ctrl + Shift + drag clears the set-up stones in a box.", S::Tools, false, Key(KEY_B) },
+    { "tool-setup-white",     ToolCommand(Tool::SetupWhite),     "White set-up stones", "Stones, not moves: white, or black with Shift. Ctrl + Shift + drag clears the set-up stones in a box.", S::Tools, false, Key(KEY_W) },
     { "tool-erase",           ToolCommand(Tool::Erase),          "Clear set-up stones", nullptr, S::Tools, false, Key(KEY_E) },
+    { "clear-setup",          Command::ClearSetup,               "Clear all set-up stones", nullptr, S::Tools, false, NONE },
     { "tool-territory-black", ToolCommand(Tool::TerritoryBlack), "Black's territory",   TERRITORY, S::Tools, false, NONE },
     { "tool-territory-white", ToolCommand(Tool::TerritoryWhite), "White's territory",   TERRITORY, S::Tools, false, NONE },
     { "tool-triangle",        ToolCommand(Tool::Triangle),       "Triangle",            MARK, S::Tools, false, Key(KEY_T) },
